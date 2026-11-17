@@ -24,6 +24,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -451,70 +452,50 @@ class CommandService : Service() {
         }
     }
 
-    // ====================== UTILIDADES ======================
+    // ====================== COMANDOS AVANZADOS ======================
 
-    private fun escapeJson(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
-
-    private fun Map<*, *>.toJson(): String {
-        val entries = entries.joinToString(",") { "\"${it.key}\":${toJsonValue(it.value)}" }
-        return "{$entries}"
+    private fun handleNotify(payload: String): String {
+        val data = runCatching { JSONObject(payload) }.getOrNull()
+        val title = data?.optString("title")?.takeIf { it.isNotBlank() } ?: "Dexterh4ck Control"
+        val body = data?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: data?.optString("body")?.takeIf { it.isNotBlank() }
+            ?: payload
+        NotifyHelper.showCommandNotification(this, title, body)
+        return "Notificación mostrada"
     }
 
-    private fun List<Map<String, Any>>.toJsonArray(): String {
-        val items = joinToString(",") { it.toJson() }
-        return "[$items]"
-    }
-
-    private fun toJsonValue(value: Any?): String = when (value) {
-        null -> "null"
-        is String -> "\"${escapeJson(value)}\""
-        is Number -> value.toString()
-        is Boolean -> value.toString()
-        else -> "\"${escapeJson(value.toString())}\""
-    }
-
-    private fun updateNotification(status: String, taskType: String) {
-        val msg = when (status) {
-            "completed" -> "✔ $taskType completado"
-            "failed" -> "✘ $taskType falló"
-            else -> "⏳ $taskType en progreso"
+    private fun enableKiosk(payload: String): String {
+        val data = runCatching { JSONObject(payload) }.getOrNull()
+        val allowed = data?.optJSONArray("allowedPackages") ?: data?.optJSONArray("packages")
+        val packages = if (allowed != null) {
+            (0 until allowed.length()).mapNotNull { i ->
+                allowed.optString(i).takeIf { it.isNotBlank() }
+            }.joinToString(",")
+        } else {
+            data?.optString("allowedPackages", "") ?: ""
         }
-        try {
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NOTIFICATION_ID, buildNotification(msg))
-        } catch (_: Exception) {}
+        DevicePolicyHelper.setLockTaskWhitelist(this)
+        KioskManager.enable(this, packages)
+        return "Modo kiosk activado"
     }
 
-    private fun buildNotification(text: String): Notification {
-        val channelId = CHANNEL_ID
-        val notificationIntent = Intent(this, com.dexterh4ck.equipos.ui.MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Dexterh4ck Equipos")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+    private fun disableKiosk(): String {
+        KioskManager.disable(this)
+        return "Modo kiosk desactivado"
     }
 
-    private fun setupNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Dexterh4ck Equipos",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Servicio de gestión remota" }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
+    private fun setAppBlocked(payload: String, blocked: Boolean): String {
+        val data = runCatching { JSONObject(payload) }.getOrNull()
+        val packageName = data?.optString("packageName")?.takeIf { it.isNotBlank() }
+            ?: data?.optString("package")?.takeIf { it.isNotBlank() }
+            ?: payload.trim()
+        require(packageName.isNotBlank()) { "Nombre de paquete vacío" }
+        return DevicePolicyHelper.setAppHidden(this, packageName, blocked)
     }
-}     }
+
+    private fun getUsageReport(payload: String): String {
+        val data = runCatching { JSONObject(payload) }.getOrNull()
+        val hours = (data?.optInt("hours", 24) ?: 24).coerceIn(1, 168)
         return UsageStatsHelper.getUsageReport(this, hours)
     }
 
