@@ -24,6 +24,16 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/btnPair"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Vincular"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/accent"
+            android:minWidth="72dp"
+            android:padding="8dp" />
+
+        <Button
             android:id="@+id/btnRefresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
