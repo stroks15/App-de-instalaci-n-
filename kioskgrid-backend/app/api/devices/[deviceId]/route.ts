@@ -1,122 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase';
-
-export const dynamic = 'force-dynamic';
-
-/**
- * GET /api/devices/[deviceId]
- * Obtiene la información detallada de un dispositivo: datos del equipo,
- * últimas tareas y últimas apps reportadas.
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { deviceId: string } }
-) {
-  try {
-    const deviceId = params.deviceId;
-    const supabase = getSupabaseAdmin();
-
-    // Datos del dispositivo
-    const { data: device, error: deviceError } = await supabase
-      .from('devices')
-      .select('*')
-      .eq('device_id', deviceId)
-      .single();
-
-    if (deviceError || !device) {
-      return NextResponse.json({ error: 'Dispositivo no encontrado' }, { status: 404 });
-    }
-
-    // Últimas 20 tareas del dispositivo
-    const { data: tasks } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('device_id', deviceId)
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    // Última lista de apps reportada
-    const { data: appTask } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('device_id', deviceId)
-      .eq('type', 'list_apps')
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    const lastAppTask = (appTask as any[] || [])[0];
-    let installedApps: any[] = [];
-    if (lastAppTask && lastAppTask.result) {
-      try {
-        installedApps = JSON.parse(lastAppTask.result);
-      } catch {
-        installedApps = [];
-      }
-    }
-
-    return NextResponse.json({
-      device,
-      tasks: tasks || [],
-      installed_apps: installedApps,
-      apps_updated_at: lastAppTask?.updated_at || null,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+import {NextRequest,NextResponse} from 'next/server';
+import {getSupabaseAdmin} from '@/lib/supabase';
+import {requireUser} from '@/lib/request-auth';
+export const dynamic='force-dynamic';
+type C={params:{deviceId:string}};
+async function findOwned(db:any,ref:string,owner:string){
+ const {data:all}=await db.from('devices').select('*').eq('owner_id',owner);
+ return (all??[]).find((d:any)=>d.id===ref||d.device_id===ref)||null;
 }
-
-/**
- * PUT /api/devices/[deviceId]
- * Actualiza nombre, estado o información del dispositivo.
- */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { deviceId: string } }
-) {
-  try {
-    const deviceId = params.deviceId;
-    const body = await request.json();
-
-    const allowedUpdates = ['name', 'status', 'type', 'platform', 'app_version', 'last_seen'];
-    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-    for (const key of allowedUpdates) {
-      if (key in body) updates[key] = body[key];
-    }
-
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await (supabase.from('devices') as any)
-      .update(updates)
-      .eq('device_id', deviceId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return NextResponse.json({ device: data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+export async function GET(request:NextRequest,{params}:C){
+ const a=await requireUser(request);if(a.response||!a.user)return a.response;
+ const db=getSupabaseAdmin(),d=await findOwned(db,params.deviceId,a.user.id);
+ if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+ const {data:tasks}=await db.from('tasks').select('*').eq('device_id',d.id).order('created_at',{ascending:false}).limit(20);
+ const appTask=(tasks??[]).find((t:any)=>t.type==='list_apps'&&t.status==='completed');
+ let apps:any[]=[];if(appTask?.result){try{apps=JSON.parse(appTask.result)}catch{apps=[]}}
+ return NextResponse.json({device:d,tasks:tasks??[],installed_apps:apps,apps_updated_at:appTask?.updated_at??null});
 }
-
-/**
- * DELETE /api/devices/[deviceId]
- * Elimina un dispositivo y sus tareas asociadas.
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { deviceId: string } }
-) {
-  try {
-    const deviceId = params.deviceId;
-    const supabase = getSupabaseAdmin();
-    const { error: taskError } = await (supabase.from('tasks') as any).delete().eq('device_id', deviceId);
-    if (taskError) throw taskError;
-
-    const { error } = await (supabase.from('devices') as any).delete().eq('device_id', deviceId);
-    if (error) throw error;
-
-    return NextResponse.json({ message: 'Dispositivo eliminado correctamente' });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+export async function PUT(request:NextRequest,{params}:C){
+ const a=await requireUser(request);if(a.response||!a.user)return a.response;
+ const b=await request.json(),name=typeof b.name==='string'?b.name.trim().slice(0,80):'';
+ if(!name)return NextResponse.json({error:'Nombre inválido'},{status:400});
+ const db=getSupabaseAdmin(),d=await findOwned(db,params.deviceId,a.user.id);
+ if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+ const {data,error}=await db.from('devices').update({name,updated_at:new Date().toISOString()}).eq('id',d.id).select('*').single();
+ if(error)return NextResponse.json({error:'No se pudo actualizar el equipo'},{status:500});
+ return NextResponse.json({device:data});
+}
+export async function DELETE(request:NextRequest,{params}:C){
+ const a=await requireUser(request);if(a.response||!a.user)return a.response;
+ const db=getSupabaseAdmin(),d=await findOwned(db,params.deviceId,a.user.id);
+ if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+ const {error}=await db.from('devices').delete().eq('id',d.id);
+ if(error)return NextResponse.json({error:'No se pudo eliminar el equipo'},{status:500});
+ return NextResponse.json({message:'Equipo eliminado correctamente'});
 }
