@@ -14,6 +14,7 @@ data class AgentConfig(
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_DEVICE_NAME = "device_name"
         const val KEY_IS_PAIRED = "is_paired"
+        const val KEY_AGENT_TOKEN = "agent_token"
         const val KEY_SERVER_URL = "server_url"
 
         /** URL por defecto del backend desplegado en Supabase. */
