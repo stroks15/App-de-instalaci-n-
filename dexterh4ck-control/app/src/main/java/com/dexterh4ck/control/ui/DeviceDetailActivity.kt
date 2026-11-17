@@ -134,7 +134,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                         tvDeviceName.text = d.name
                         updateStatusUI(d.status)
                         tvLastSeen.text = "Última conexión: ${d.last_seen ?: "nunca"}"
-                        d.installed_apps?.let { showApps(it) }
+                        detail?.installed_apps?.let { showApps(it) }
                     }
                 }
             } catch (e: Exception) {
