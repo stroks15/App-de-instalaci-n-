@@ -52,6 +52,14 @@ class CommandService : Service() {
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
     private val httpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val token = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+                .getString(AgentConfig.KEY_AGENT_TOKEN, null)
+            val request = chain.request().newBuilder().apply {
+                if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
+            }.build()
+            chain.proceed(request)
+        }
         .connectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT, TimeUnit.SECONDS)
         .build()
@@ -123,7 +131,16 @@ class CommandService : Service() {
                     status = "online",
                     last_seen = now
                 )
-                api.registerDevice(device)
+                val response = api.registerDevice(device)
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "Registro rechazado: HTTP ${response.code()}")
+                    return@launch
+                }
+                val token = response.body()?.agent_token
+                if (!token.isNullOrBlank()) {
+                    getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+                        .edit().putString(AgentConfig.KEY_AGENT_TOKEN, token).apply()
+                }
                 Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
             } catch (e: Exception) {
                 Log.e(TAG, "Error registrando equipo: ${e.message}")
@@ -225,7 +242,7 @@ class CommandService : Service() {
     /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
     private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null) {
         try {
-            api.updateTask(id, TaskUpdate(status = status, result = result, error = error))
+            api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
         } catch (e: Exception) {
             Log.e(TAG, "Error reportando tarea $id: ${e.message}")
         }
