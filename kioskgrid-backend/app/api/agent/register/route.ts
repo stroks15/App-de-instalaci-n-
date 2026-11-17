@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getSupabaseAdmin();
-    const { data: existing, error: lookupError } = await db.from('devices')
+    const { data: existing, error: lookupError } = await (db.from('devices') as any)
       .select('id,agent_key_hash,owner_id')
       .eq('hardware_id', hardwareId).maybeSingle();
     if (lookupError) throw lookupError;
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       if (!bearer || hashAgentToken(bearer) !== existing.agent_key_hash) {
         return NextResponse.json({ error: 'Este equipo ya está registrado; se requiere su credencial guardada' }, { status: 401 });
       }
-      const { data, error } = await db.from('devices').update({
+      const { data, error } = await (db.from('devices') as any).update({
         name, pairing_code, status: 'online', last_seen: new Date().toISOString(), updated_at: new Date().toISOString()
       }).eq('id', existing.id).select('id,device_id,name,status,last_seen,owner_id').single();
       if (error) throw error;
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
       agent_key_hash: hashAgentToken(token)
     };
-    const { data, error } = await db.from('devices').insert(row)
+    const { data, error } = await (db.from('devices') as any).insert(row)
       .select('id,device_id,name,status,last_seen,owner_id').single();
     if (error) throw error;
     return NextResponse.json({ device: data, agent_token: token }, { status: 201 });
