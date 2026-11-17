@@ -17,3 +17,6 @@ data class Device(
     fun isOnline(): Boolean = status == "online"
     fun isBusy(): Boolean = status == "busy"
 }
+
+data class PairDeviceRequest(val pairing_code: String)
+data class PairDeviceResponse(val device: Device?)
