@@ -11,7 +11,7 @@ export async function requireAgent(request: NextRequest) {
   try {
     const hash = createHash('sha256').update(token).digest('hex');
     const db = getSupabaseAdmin();
-    const { data, error } = await db.from('devices')
+    const { data, error } = await (db.from('devices') as any)
       .select('id,device_id,owner_id,status')
       .eq('agent_key_hash', hash)
       .maybeSingle();
