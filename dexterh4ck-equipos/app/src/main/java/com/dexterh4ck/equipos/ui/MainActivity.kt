@@ -9,6 +9,7 @@ import android.net.wifi.WifiManager
 import android.os.*
 import android.provider.Settings
 import android.text.format.Formatter
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
