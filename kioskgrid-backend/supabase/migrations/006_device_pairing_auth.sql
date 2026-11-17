@@ -27,3 +27,10 @@ CREATE POLICY "Service role manages devices" ON public.devices
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Los clientes anónimos no deben leer ni escribir dispositivos directamente.
+
+-- Las tareas contienen comandos y resultados; no deben ser legibles públicamente.
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Allow service role full access tasks" ON public.tasks;
+CREATE POLICY "Service role manages tasks" ON public.tasks
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
