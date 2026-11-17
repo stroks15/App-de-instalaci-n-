@@ -136,7 +136,7 @@
     <string name="auto">Automático</string>
     <string name="manual">Manual</string>
     <string name="automatic">Automático</string>
-    <string name="default">Por defecto</string>
+    <string name="default_value">Por defecto</string>
     <string name="custom">Personalizado</string>
     <string name="standard">Estándar</string>
     <string name="advanced_mode">Modo avanzado</string>
