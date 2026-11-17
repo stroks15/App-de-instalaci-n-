@@ -42,10 +42,7 @@ CREATE POLICY "Users create own remote sessions"
   );
 
 DROP POLICY IF EXISTS "Users end own remote sessions" ON public.remote_sessions;
-CREATE POLICY "Users end own remote sessions"
-  ON public.remote_sessions FOR UPDATE TO authenticated
-  USING ((SELECT auth.uid()) = owner_id)
-  WITH CHECK ((SELECT auth.uid()) = owner_id);
+REVOKE UPDATE ON public.remote_sessions FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.device_audit_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -67,18 +64,8 @@ CREATE POLICY "Users read own device audit logs"
   USING ((SELECT auth.uid()) = owner_id);
 
 DROP POLICY IF EXISTS "Users append own device audit logs" ON public.device_audit_logs;
-CREATE POLICY "Users append own device audit logs"
-  ON public.device_audit_logs FOR INSERT TO authenticated
-  WITH CHECK (
-    (SELECT auth.uid()) = owner_id
-    AND (SELECT auth.uid()) = actor_id
-    AND EXISTS (
-      SELECT 1 FROM public.devices d
-      WHERE d.id = device_id AND d.owner_id = (SELECT auth.uid())
-    )
-  );
 
 REVOKE ALL ON public.remote_sessions FROM anon;
 REVOKE ALL ON public.device_audit_logs FROM anon;
-GRANT SELECT, INSERT, UPDATE ON public.remote_sessions TO authenticated;
-GRANT SELECT, INSERT ON public.device_audit_logs TO authenticated;
+GRANT SELECT, INSERT ON public.remote_sessions TO authenticated;
+GRANT SELECT ON public.device_audit_logs TO authenticated;
