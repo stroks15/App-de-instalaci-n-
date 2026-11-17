@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabase';
+import { requireUser } from '@/lib/request-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth.response || !auth.user) return auth.response;
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
-
-  const supabase = await getSupabase();
-
-  let query = supabase.from('devices').select('*');
+  const supabase = getSupabaseAdmin();
+  let query = supabase.from('devices').select('*').eq('user_id', auth.user.id);
 
   if (status) {
     query = query.eq('status', status);
