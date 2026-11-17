@@ -17,7 +17,7 @@ data class AgentConfig(
         const val KEY_AGENT_TOKEN = "agent_token"
         const val KEY_SERVER_URL = "server_url"
 
-        /** URL por defecto del backend desplegado en Supabase. */
+        /** URL del backend Next.js desplegado en Vercel. */
         const val DEFAULT_SERVER_URL = "https://kioskgrid-backend.vercel.app"
     }
 }
