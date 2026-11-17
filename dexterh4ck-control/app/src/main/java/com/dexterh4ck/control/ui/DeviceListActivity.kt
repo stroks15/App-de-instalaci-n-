@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.DeviceAdapter
 import com.dexterh4ck.control.data.ApiConfig
+import com.dexterh4ck.control.data.AuthStore
 import com.dexterh4ck.control.data.Device
 import com.dexterh4ck.control.data.KioskApi
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,7 @@ class DeviceListActivity : AppCompatActivity() {
         val retrofit = Retrofit.Builder()
             .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
+            .client(AuthStore.client(this))
             .build()
         api = retrofit.create(KioskApi::class.java)
 
