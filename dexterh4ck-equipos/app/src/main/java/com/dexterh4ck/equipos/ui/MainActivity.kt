@@ -1,184 +1,88 @@
 package com.dexterh4ck.equipos.ui
 
-import android.Manifest
-import android.app.ActivityManager
-import android.app.NotificationManager
-import android.content.*
-import android.content.pm.PackageManager
-import android.net.wifi.WifiManager
-import android.os.*
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
 import android.provider.Settings
-import android.text.format.Formatter
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dexterh4ck.equipos.R
 import com.dexterh4ck.equipos.data.AgentConfig
 import com.dexterh4ck.equipos.service.CommandService
-import java.text.SimpleDateFormat
-import java.util.*
+import com.dexterh4ck.equipos.util.DeviceIdentity
+import com.dexterh4ck.equipos.util.PairingCode
 
-/**
- * Pantalla principal de Dexterh4ck Equipos (agente).
- * Permite configurar la URL del servidor, el nombre del equipo,
- * ver información del dispositivo y las apps instaladas.
- */
+/** Panel compacto y navegable con mando para Android TV / Fire TV. */
 class MainActivity : AppCompatActivity() {
-
-    private lateinit var etServerUrl: EditText
-    private lateinit var etDeviceName: EditText
-    private lateinit var tvDeviceId: TextView
-    private lateinit var tvStatus: TextView
-    private lateinit var viewStatusDot: View
-    private lateinit var tvLastCommand: TextView
-    private lateinit var tvDeviceInfo: TextView
-    private lateinit var tvAppsCount: TextView
-    private lateinit var tvAppsList: TextView
-
-    private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private lateinit var serverUrl: EditText
+    private lateinit var deviceName: EditText
+    private lateinit var pairingCode: TextView
+    private lateinit var adbStatus: TextView
+    private lateinit var connectionStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        etServerUrl = findViewById(R.id.etServerUrl)
-        etDeviceName = findViewById(R.id.etDeviceName)
-        tvDeviceId = findViewById(R.id.tvDeviceId)
-        tvStatus = findViewById(R.id.tvStatus)
-        viewStatusDot = findViewById(R.id.viewStatusDot)
-        tvLastCommand = findViewById(R.id.tvLastCommand)
-        tvDeviceInfo = findViewById(R.id.tvDeviceInfo)
-        tvAppsCount = findViewById(R.id.tvAppsCount)
-        tvAppsList = findViewById(R.id.tvAppsList)
+        serverUrl = findViewById(R.id.etServerUrl)
+        deviceName = findViewById(R.id.etDeviceName)
+        pairingCode = findViewById(R.id.tvPairingCode)
+        adbStatus = findViewById(R.id.tvAdbStatus)
+        connectionStatus = findViewById(R.id.tvStatus)
 
         val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+        serverUrl.setText(prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL))
+        deviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV"))
+        pairingCode.text = PairingCode.getOrCreate(this)
+        refreshAdbStatus()
 
-        // Cargar configuración guardada
-        etServerUrl.setText(prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL) ?: AgentConfig.DEFAULT_SERVER_URL)
-        etDeviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "") ?: "")
-
-        val deviceId = prefs.getString(AgentConfig.KEY_DEVICE_ID, null)
-            ?: Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-            ?: UUID.randomUUID().toString().replace("-", "").take(16)
-        tvDeviceId.text = deviceId
-
-        updateStatusUI(prefs.getBoolean(AgentConfig.KEY_IS_PAIRED, false))
-
-        findViewById<Button>(R.id.btnSave).setOnClickListener {
-            saveConfig()
-        }
-
-        findViewById<Button>(R.id.btnCopyId).setOnClickListener {
+        findViewById<Button>(R.id.btnSave).setOnClickListener { saveAndStart() }
+        findViewById<Button>(R.id.btnCopyCode).setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("device_id", deviceId))
-            Toast.makeText(this, "ID copiado: $deviceId", Toast.LENGTH_SHORT).show()
+            clipboard.setPrimaryClip(ClipData.newPlainText("Código de vinculación", pairingCode.text))
+            Toast.makeText(this, "Código copiado", Toast.LENGTH_SHORT).show()
         }
-
-        findViewById<Button>(R.id.btnReboot).setOnClickListener {
-            confirmReboot()
+        findViewById<Button>(R.id.btnAdbSettings).setOnClickListener {
+            try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+            catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         }
-
-        findViewById<Button>(R.id.btnStopService).setOnClickListener {
-            stopService(Intent(this, CommandService::class.java))
-            prefs.edit().putBoolean(AgentConfig.KEY_IS_PAIRED, false).apply()
-            updateStatusUI(false)
-            Toast.makeText(this, "Servicio remoto detenido", Toast.LENGTH_SHORT).show()
-        }
-
-        showDeviceInfo()
-        showInstalledApps()
     }
 
-    private fun saveConfig() {
-        val serverUrl = etServerUrl.text.toString().trim().trimEnd('/')
-        val deviceName = etDeviceName.text.toString().trim().ifEmpty { "Equipo TV" }
+    override fun onResume() {
+        super.onResume()
+        if (::adbStatus.isInitialized) refreshAdbStatus()
+    }
 
-        val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString(AgentConfig.KEY_SERVER_URL, serverUrl)
-            .putString(AgentConfig.KEY_DEVICE_NAME, deviceName)
-            .putString(AgentConfig.KEY_DEVICE_ID, tvDeviceId.text.toString())
+    private fun refreshAdbStatus() {
+        val enabled = runCatching { Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 1 }.getOrDefault(false)
+        adbStatus.text = if (enabled) "ADB: Activado" else "ADB: Desactivado — habilítalo si necesitas depuración"
+    }
+
+    private fun saveAndStart() {
+        val url = serverUrl.text.toString().trim().trimEnd('/')
+        if (!url.startsWith("https://")) {
+            Toast.makeText(this, "La URL del backend debe usar HTTPS", Toast.LENGTH_LONG).show()
+            return
+        }
+        val name = deviceName.text.toString().trim().ifBlank { "Equipo TV" }
+        val hardwareId = DeviceIdentity.getOrCreateDeviceId(this)
+        getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE).edit()
+            .putString(AgentConfig.KEY_SERVER_URL, url)
+            .putString(AgentConfig.KEY_DEVICE_NAME, name)
+            .putString(AgentConfig.KEY_DEVICE_ID, hardwareId)
             .putBoolean(AgentConfig.KEY_IS_PAIRED, true)
             .apply()
-
-        // Notificación para el servicio en primer plano (Android 13+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        // (Re)iniciar el servicio de escucha de comandos
-        val serviceIntent = Intent(this, CommandService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
-
-        Toast.makeText(this, "Configuración guardada. Servicio remoto iniciado.", Toast.LENGTH_LONG).show()
-        updateStatusUI(true)
-    }
-
-    private fun updateStatusUI(paired: Boolean) {
-        if (paired) {
-            tvStatus.text = " Conectado (gestión remota activa)"
-            viewStatusDot.setBackgroundColor(0xFF4CAF50.toInt())
-        } else {
-            tvStatus.text = " No emparejado"
-            viewStatusDot.setBackgroundColor(0xFF9E9E9E.toInt())
-        }
-    }
-
-    private fun showDeviceInfo() {
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val memInfo = ActivityManager.MemoryInfo()
-        am.getMemoryInfo(memInfo)
-
-        val stat = StatFs(Environment.getDataDirectory().path)
-        val totalGb = stat.totalBytes / (1024 * 1024 * 1024)
-        val availGb = stat.availableBytes / (1024 * 1024 * 1024)
-
-        val ip = try {
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val dhcp = wm.dhcpInfo
-            String.format(
-                "%d.%d.%d.%d",
-                dhcp.ipAddress and 0xff, dhcp.ipAddress shr 8 and 0xff,
-                dhcp.ipAddress shr 16 and 0xff, dhcp.ipAddress shr 24 and 0xff
-            )
-        } catch (e: Exception) { "desconocida" }
-
-        val uptimeMin = SystemClock.elapsedRealtime() / 60000
-
-        tvDeviceInfo.text = buildString {
-            append("Modelo: ${Build.MANUFACTURER} ${Build.MODEL}\n")
-            append("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-            append("IP: $ip\n")
-            append("RAM total: ${Formatter.formatFileSize(this@MainActivity, memInfo.totalMem)}\n")
-            append("Almacenamiento: ${availGb}GB libres / ${totalGb}GB\n")
-            append("Tiempo encendido: ${uptimeMin} min\n")
-            append("Es Fire OS: ${Build.MANUFACTURER.contains("Amazon", ignoreCase = true)}")
-        }
-    }
-
-    private fun showInstalledApps() {
-        val pm = packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        val userApps = apps.filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
-        tvAppsCount.text = "Apps instaladas: ${apps.size} (${userApps.size} del usuario)"
-        tvAppsList.text = userApps.take(15).mapNotNull { it.loadLabel(pm)?.toString() }.joinToString("\n")
-    }
-
-    private fun confirmReboot() {
         try {
-            val intent = Intent("android.intent.action.ACTION_REQUEST_SHUTDOWN").apply {
-                putExtra("android.intent.extra.KEY_CONFIRM", false)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "No se pudo abrir el diálogo de reinicio: ${e.message}", Toast.LENGTH_LONG).show()
+            ContextCompat.startForegroundService(this, Intent(this, CommandService::class.java))
+            connectionStatus.text = "Servicio iniciado — registrando equipo"
+            Toast.makeText(this, "Agente iniciado. Comparte el código para vincularlo.", Toast.LENGTH_LONG).show()
+        } catch (error: Exception) {
+            connectionStatus.text = "No se pudo iniciar: ${error.localizedMessage}"
         }
     }
 }
