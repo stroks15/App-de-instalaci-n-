@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { device_id, name, type, platform, app_version, status } = body;
+  const { device_id, hardware_id, pairing_code, name, type, platform, app_version, status } = body;
 
   if (!device_id || !name) {
     return NextResponse.json({ error: 'device_id y name son requeridos' }, { status: 400 });
@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
   const supabase = await getSupabase();
   const { data, error } = await (supabase.from('devices') as any).upsert({
     device_id,
+    hardware_id: hardware_id || device_id,
+    pairing_code: pairing_code || null,
     name,
     type: type || 'android_tv',
     platform: platform || 'android',
