@@ -37,6 +37,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ device: data, ...(replacementToken ? { agent_token: replacementToken } : {}), token_rotated: !!replacementToken });
     }
 
+    if (existing) {
+      if (existing.pairing_code && existing.pairing_code !== pairingCode) {
+        return NextResponse.json({ error: 'El código visible no coincide con el equipo registrado' }, { status: 401 });
+      }
+      const recoveredToken = randomBytes(32).toString('base64url');
+      const { data, error } = await (db.from('devices') as any).update({
+        agent_key_hash: hashAgentToken(recoveredToken), pairing_code: pairingCode,
+        name, status: 'online', last_seen: new Date().toISOString(), updated_at: new Date().toISOString()
+      }).eq('id', existing.id).select('id,device_id,name,status,last_seen,owner_id').single();
+      if (error) throw error;
+      return NextResponse.json({ device: data, agent_token: recoveredToken, token_rotated: true });
+    }
+
     const token = randomBytes(32).toString('base64url');
     const row = {
       hardware_id: hardwareId,
