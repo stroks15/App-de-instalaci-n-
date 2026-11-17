@@ -17,20 +17,24 @@ export async function POST(request: NextRequest) {
 
     const db = getSupabaseAdmin();
     const { data: existing, error: lookupError } = await (db.from('devices') as any)
-      .select('id,agent_key_hash,owner_id')
+      .select('id,agent_key_hash,owner_id,pairing_code')
       .eq('hardware_id', hardwareId).maybeSingle();
     if (lookupError) throw lookupError;
 
     const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
     if (existing?.agent_key_hash) {
-      if (!bearer || hashAgentToken(bearer) !== existing.agent_key_hash) {
-        return NextResponse.json({ error: 'Este equipo ya está registrado; se requiere su credencial guardada' }, { status: 401 });
+      const authorizedByToken = !!bearer && hashAgentToken(bearer) === existing.agent_key_hash;
+      const authorizedByVisiblePairingCode = !existing.owner_id && pairingCode === existing.pairing_code;
+      if (!authorizedByToken && !authorizedByVisiblePairingCode) {
+        return NextResponse.json({ error: 'Este equipo ya está registrado; se requiere su credencial guardada o el código visible de vinculación si aún no está vinculado' }, { status: 401 });
       }
+      const replacementToken = authorizedByToken ? null : randomBytes(32).toString('base64url');
       const { data, error } = await (db.from('devices') as any).update({
-        name, pairing_code, status: 'online', last_seen: new Date().toISOString(), updated_at: new Date().toISOString()
+        name, status: 'online', last_seen: new Date().toISOString(), updated_at: new Date().toISOString(),
+        ...(replacementToken ? { agent_key_hash: hashAgentToken(replacementToken) } : {})
       }).eq('id', existing.id).select('id,device_id,name,status,last_seen,owner_id').single();
       if (error) throw error;
-      return NextResponse.json({ device: data, token_rotated: false });
+      return NextResponse.json({ device: data, ...(replacementToken ? { agent_token: replacementToken } : {}), token_rotated: !!replacementToken });
     }
 
     const token = randomBytes(32).toString('base64url');
