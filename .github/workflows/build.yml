@@ -55,7 +55,16 @@ jobs:
             exit 1
           fi
 
+          # sdkmanager exits after accepting licenses; with pipefail, `yes` receives SIGPIPE.
+          # Temporarily disable pipefail only for this expected early-close pipeline.
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses
+          LICENSE_STATUS=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$LICENSE_STATUS" -ne 0 ]; then
+            echo "::error::No se pudieron aceptar las licencias del Android SDK."
+            exit "$LICENSE_STATUS"
+          fi
           "$SDKMANAGER" --install \
             "platform-tools" \
             "platforms;android-34" \
