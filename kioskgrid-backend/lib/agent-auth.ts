@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function requireAgent(request: NextRequest) {
