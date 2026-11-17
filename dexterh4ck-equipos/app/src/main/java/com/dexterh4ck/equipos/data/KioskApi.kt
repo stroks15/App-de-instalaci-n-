@@ -7,7 +7,7 @@ import retrofit2.http.*
  * Interfaz de comunicación con el backend KioskGrid (Supabase).
  *
  * Base URL: la URL pública del proyecto Supabase (p.ej. https://xxx.supabase.co/)
- * El backend expone los endpoints /api/* que se conectan a la base de datos.
+ * El backend expone los endpoints de API que se conectan a la base de datos.
  */
 interface KioskApi {
 
