@@ -37,6 +37,13 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (!device) return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
   if (device.status !== 'online') return NextResponse.json({ error: 'El equipo está desconectado' }, { status: 409 });
 
+  const now = new Date().toISOString();
+  await db.from('remote_sessions')
+    .update({ status: 'expired', ended_at: now })
+    .eq('device_id', device.id)
+    .eq('status', 'requested')
+    .lte('expires_at', now);
+
   const { data: existing } = await db.from('remote_sessions')
     .select('id,status').eq('device_id', device.id)
     .in('status', ['requested', 'active']).maybeSingle();
@@ -49,6 +56,9 @@ export async function POST(request: NextRequest, { params }: Context) {
     capabilities: { screen: true, input: false, transport: 'webrtc_pending' },
     expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString()
   }).select('id,device_id,status,capabilities,created_at,expires_at').single();
+  if (error?.code === '23505') {
+    return NextResponse.json({ error: 'Ya existe una sesión remota abierta para este equipo' }, { status: 409 });
+  }
   if (error) return NextResponse.json({ error: 'No se pudo solicitar la sesión remota' }, { status: 500 });
 
   await db.from('device_audit_logs').insert({
