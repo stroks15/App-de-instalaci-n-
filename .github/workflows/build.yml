@@ -41,11 +41,18 @@ jobs:
           gradle-version: '8.2'
           cache-disabled: true
 
-      - name: Install Android SDK platform and build tools
+      - name: Set up Android SDK command-line tools
         uses: android-actions/setup-android@v3
-        with:
-          # setup-android expects a comma-separated package list.
-          packages: platform-tools,platforms;android-34,build-tools;34.0.0
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Validate project files and expected Android configuration
         shell: bash
