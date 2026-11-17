@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   if (auth.response || !auth.user) return auth.response;
 
   const db = getSupabaseAdmin();
-  const { data, error } = await db.from('remote_sessions')
+  const { data, error } = await (db.from('remote_sessions') as any)
     .update({ status: 'ended', ended_at: new Date().toISOString() })
     .eq('id', params.sessionId)
     .eq('device_id', params.deviceId)
@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   if (error) return NextResponse.json({ error: 'No se pudo cerrar la sesión' }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'Sesión no encontrada o ya finalizada' }, { status: 404 });
 
-  await db.from('device_audit_logs').insert({
+  await (db.from('device_audit_logs') as any).insert({
     device_id: params.deviceId, owner_id: auth.user.id, actor_id: auth.user.id,
     action: 'remote_session_ended', metadata: { session_id: data.id }
   });
