@@ -17,6 +17,6 @@ data class AgentConfig(
         const val KEY_SERVER_URL = "server_url"
 
         /** URL por defecto del backend desplegado en Supabase. */
-        const val DEFAULT_SERVER_URL = "https://jnrnbbkjcvxeplyljkyj.supabase.co"
+        const val DEFAULT_SERVER_URL = "https://kioskgrid-backend.vercel.app"
     }
 }
