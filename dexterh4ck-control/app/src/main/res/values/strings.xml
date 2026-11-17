@@ -18,6 +18,7 @@
     <string name="cancel">Cancelar</string>
     <string name="task_queued">Tarea programada</string>
     <string name="no_installed_apps">No hay apps instaladas</string>
+    <string name="installed_apps">Aplicaciones instaladas</string>
     <string name="upload_apk">Subir APK a la nube</string>
     <string name="storage_bucket">Bucket de Storage</string>
     <string name="apk_url">URL del APK</string>
