@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Fondo -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M0,0h108v108h-108z"/>
+    <!-- Cuadrícula de apps (4x4) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,20h14v14h-14zM47,20h14v14h-14zM74,20h14v14h-14zM20,47h14v14h-14zM47,47h14v14h-14zM74,47h14v14h-14zM20,74h14v14h-14zM47,74h14v14h-14zM74,74h14v14h-14z"/>
+    <!-- Centro resaltado (accent) -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M47,47h14v14h-14z"/>
+</vector>

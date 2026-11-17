@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">Dexterh4ck Control</string>
+    <string name="title_devices">Equipos</string>
+    <string name="title_device_detail">Gestión del equipo</string>
+    <string name="title_bulk">Gestión masiva</string>
+    <string name="install_apk">Instalar APK</string>
+    <string name="uninstall_app">Desinstalar App</string>
+    <string name="open_app">Abrir App</string>
+    <string name="select_apk_from_storage">Seleccionar APK del almacenamiento</string>
+    <string name="select_device">Selecciona un equipo</string>
+    <string name="no_devices">No hay equipos conectados</string>
+    <string name="loading">Cargando...</string>
+    <string name="error_network">Error de conexión</string>
+    <string name="retry">Reintentar</string>
+    <string name="bulk_install_to_all">Instalar a todos</string>
+    <string name="bulk_uninstall_from_all">Desinstalar de todos</string>
+    <string name="confirm">Confirmar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="task_queued">Tarea programada</string>
+    <string name="no_installed_apps">No hay apps instaladas</string>
+    <string name="upload_apk">Subir APK a la nube</string>
+    <string name="storage_bucket">Bucket de Storage</string>
+    <string name="apk_url">URL del APK</string>
+    <string name="enter_apk_url">Pega la URL del APK</string>
+    <string name="send_command">Enviar comando</string>
+    <string name="refresh_devices">Actualizar equipos</string>
+    <string name="device_online">Online</string>
+    <string name="device_offline">Offline</string>
+    <string name="device_busy">Ocupado</string>
+    <string name="last_seen">Última conexión</string>
+    <string name="platform">Plataforma</string>
+    <string name="app_version">Versión de app</string>
+</resources>
