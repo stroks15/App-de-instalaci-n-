@@ -18,6 +18,8 @@ android {
 
     buildTypes {
         release {
+            // APK firmado para instalación directa/sideload. Para Play Store se debe usar una clave privada propia.
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
