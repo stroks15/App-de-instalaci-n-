@@ -14,7 +14,7 @@ interface KioskApi {
     /**
      * Obtiene las tareas pendientes para este dispositivo (polling cada 5s).
      */
-    @GET("api/tasks")
+    @GET("api/agent/tasks")
     suspend fun getTasks(
         @Query("deviceId") deviceId: String,
         @Query("status") status: String = "queued"
@@ -24,20 +24,17 @@ interface KioskApi {
      * Reporta el resultado de una tarea (estado + resultado JSON).
      * Usado por el agente después de ejecutar un comando.
      */
-    @PATCH("api/tasks/{id}")
-    suspend fun updateTask(
-        @Path("id") id: String,
-        @Body update: TaskUpdate
-    ): Response<Task>
+    @PATCH("api/agent/tasks")
+    suspend fun updateTask(@Body update: TaskUpdate): Response<Map<String, Task>>
 
     /**
      * Registra/actualiza este dispositivo en la tabla devices
      * para que aparezca en Dexterh4ck Control.
      */
-    @POST("api/devices")
+    @POST("api/agent/register")
     suspend fun registerDevice(
         @Body device: DeviceRegistration
-    ): Response<DeviceRegistration>
+    ): Response<AgentRegistrationResponse>
 
     /**
      * Actualiza campos del dispositivo (ej: kiosk_enabled).
