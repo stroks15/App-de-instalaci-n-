@@ -50,11 +50,38 @@ jobs:
             test -d "$project/app/src"
           done
 
+      - name: Set up Android SDK build tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install APK validation tools
+        run: sdkmanager "build-tools;35.0.0"
+
       - name: Build Dexterh4ck Equipos APK
         run: gradle -p dexterh4ck-equipos --no-daemon clean assembleRelease
 
       - name: Build Dexterh4ck Control APK
         run: gradle -p dexterh4ck-control --no-daemon clean assembleRelease
+
+      - name: Verify APK signatures, alignment and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKS=(
+            "dexterh4ck-equipos/app/build/outputs/apk/release/app-release.apk"
+            "dexterh4ck-control/app/build/outputs/apk/release/app-release.apk"
+          )
+          EXPECTED_PACKAGES=("com.dexterh4ck.equipos" "com.dexterh4ck.control")
+          for i in "${!APKS[@]}"; do
+            apk="${APKS[$i]}"
+            expected="${EXPECTED_PACKAGES[$i]}"
+            test -s "$apk"
+            echo "Validando $apk"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$apk"
+            actual="$( "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n1 )"
+            test "$actual" = "$expected" || { echo "Paquete inesperado: $actual (esperado $expected)"; exit 1; }
+            echo "OK: paquete=$actual"
+          done
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
