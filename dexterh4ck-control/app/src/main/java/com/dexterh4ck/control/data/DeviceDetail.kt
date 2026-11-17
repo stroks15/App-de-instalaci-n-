@@ -17,13 +17,3 @@ data class TaskDetail(
     val task: Task
 )
 
-/**
- * Modelo de app instalada reportada por el agente.
- */
-data class InstalledApp(
-    val packageName: String,
-    val appName: String,
-    val isSystemApp: Boolean = false,
-    val sourceDir: String = "",
-    val versionName: String = ""
-)
