@@ -47,7 +47,7 @@ class InstalledAppAdapter(
         holder.tvName.text = app.appName
         holder.tvPackage.text = app.packageName
         holder.tvVersion.text = if (app.versionName.isNotEmpty()) "v${app.versionName}" else "Sistema"
-        holder.ivAppIcon.setImageResource(android.R.drawable.ic_menu_info_details)
+        holder.ivIcon.setImageResource(android.R.drawable.ic_menu_info_details)
     }
 
     override fun getItemCount() = apps.size
