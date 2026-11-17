@@ -1,4 +1,4 @@
-name: Build APKs
+name: Build and validate Android APKs
 
 on:
   push:
@@ -11,86 +11,136 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-build-${{ github.run_id }}
+  group: android-apks-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build Android applications
+    name: Build, sign and validate both Android apps
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 1
           submodules: false
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # These projects contain Gradle build files but no Gradle Wrapper.
-      # Install the Gradle version compatible with Android Gradle Plugin 8.2.0.
+      # Android Gradle Plugin 8.2.0 requires Gradle 8.2 and JDK 17.
+      # These projects do not contain a Gradle Wrapper, so install Gradle explicitly.
       - name: Set up Gradle 8.2
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
           cache-disabled: true
 
-      - name: Validate Android project structure
+      - name: Install Android SDK platform and build tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+
+      - name: Validate project files and expected Android configuration
         shell: bash
         run: |
           set -euo pipefail
+
           for project in dexterh4ck-equipos dexterh4ck-control; do
             test -f "$project/settings.gradle"
             test -f "$project/build.gradle"
+            test -f "$project/gradle.properties"
             test -f "$project/app/build.gradle"
-            test -d "$project/app/src"
+            test -f "$project/app/src/main/AndroidManifest.xml"
+            test -d "$project/app/src/main"
           done
 
-      - name: Set up Android SDK build tools
-        uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
+          grep -Fq 'id "com.android.application" version "8.2.0" apply false' dexterh4ck-equipos/build.gradle || grep -Fq "id 'com.android.application' version '8.2.0' apply false" dexterh4ck-equipos/build.gradle
+          grep -Fq 'id "org.jetbrains.kotlin.android" version "1.9.22" apply false' dexterh4ck-equipos/build.gradle || grep -Fq "id 'org.jetbrains.kotlin.android' version '1.9.22' apply false" dexterh4ck-equipos/build.gradle
 
-      - name: Install APK validation tools
-        run: sdkmanager "build-tools;35.0.0"
+          grep -Fq 'applicationId "com.dexterh4ck.equipos"' dexterh4ck-equipos/app/build.gradle
+          grep -Fq 'applicationId "com.dexterh4ck.control"' dexterh4ck-control/app/build.gradle
+          grep -Fq 'compileSdk 34' dexterh4ck-equipos/app/build.gradle
+          grep -Fq 'compileSdk 34' dexterh4ck-control/app/build.gradle
+          grep -Fq 'targetSdk 34' dexterh4ck-equipos/app/build.gradle
+          grep -Fq 'targetSdk 34' dexterh4ck-control/app/build.gradle
+          grep -Fq 'signingConfig signingConfigs.debug' dexterh4ck-equipos/app/build.gradle
+          grep -Fq 'signingConfig signingConfigs.debug' dexterh4ck-control/app/build.gradle
 
-      - name: Build Dexterh4ck Equipos APK
-        run: gradle -p dexterh4ck-equipos --no-daemon clean assembleRelease
+      - name: Build Dexterh4ck Equipos release APK
+        run: gradle -p dexterh4ck-equipos --no-daemon --stacktrace clean assembleRelease
 
-      - name: Build Dexterh4ck Control APK
-        run: gradle -p dexterh4ck-control --no-daemon clean assembleRelease
+      - name: Build Dexterh4ck Control release APK
+        run: gradle -p dexterh4ck-control --no-daemon --stacktrace clean assembleRelease
 
-      - name: Verify APK signatures, alignment and package metadata
+      - name: Verify APK signature, alignment, package and SDK metadata
         shell: bash
         run: |
           set -euo pipefail
+
           APKS=(
             "dexterh4ck-equipos/app/build/outputs/apk/release/app-release.apk"
             "dexterh4ck-control/app/build/outputs/apk/release/app-release.apk"
           )
           EXPECTED_PACKAGES=("com.dexterh4ck.equipos" "com.dexterh4ck.control")
+          EXPECTED_MIN_SDKS=("21" "24")
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+
           for i in "${!APKS[@]}"; do
             apk="${APKS[$i]}"
-            expected="${EXPECTED_PACKAGES[$i]}"
+            expected_package="${EXPECTED_PACKAGES[$i]}"
+            expected_min_sdk="${EXPECTED_MIN_SDKS[$i]}"
+
             test -s "$apk"
-            echo "Validando $apk"
-            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
-            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 "$apk"
-            actual="$( "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n1 )"
-            test "$actual" = "$expected" || { echo "Paquete inesperado: $actual (esperado $expected)"; exit 1; }
-            echo "OK: paquete=$actual"
+            echo "::group::Validating $apk"
+
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$apk"
+            "$BUILD_TOOLS/zipalign" -c -v 4 "$apk"
+
+            metadata="$("$BUILD_TOOLS/aapt" dump badging "$apk")"
+            printf '%s\n' "$metadata"
+
+            grep -Fq "package: name='$expected_package'" <<< "$metadata"
+            grep -Fq "sdkVersion:'$expected_min_sdk'" <<< "$metadata"
+            grep -Fq "targetSdkVersion:'34'" <<< "$metadata"
+            grep -q "^launchable-activity:" <<< "$metadata"
+
+            echo "APK válido: $expected_package; minSdk=$expected_min_sdk; targetSdk=34"
+            echo "::endgroup::"
           done
 
-      - name: Upload APKs
+      # This is a real Package Manager installation test, not only a ZIP/signature check.
+      - name: Install both APKs on an Android 14 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r dexterh4ck-equipos/app/build/outputs/apk/release/app-release.apk
+            adb install -r dexterh4ck-control/app/build/outputs/apk/release/app-release.apk
+            adb shell pm path com.dexterh4ck.equipos
+            adb shell pm path com.dexterh4ck.control
+            echo "Las dos APK se instalaron correctamente en Android 14."
+
+      - name: Upload install-tested APKs
         uses: actions/upload-artifact@v4
         with:
-          name: dexterh4ck-apks
+          name: dexterh4ck-apks-android14-install-tested
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           path: |
-            dexterh4ck-equipos/app/build/outputs/apk/release/*.apk
-            dexterh4ck-control/app/build/outputs/apk/release/*.apk
+            dexterh4ck-equipos/app/build/outputs/apk/release/app-release.apk
+            dexterh4ck-control/app/build/outputs/apk/release/app-release.apk
