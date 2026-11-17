@@ -1,121 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
-
+import { requireUser } from '@/lib/request-auth';
 export const dynamic = 'force-dynamic';
 
-/**
- * GET /api/tasks?deviceId=XXX&status=queued&type=install
- * Lista tareas con filtros. El agente hace polling con deviceId + status=queued.
- */
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const deviceId = searchParams.get('deviceId');
-    const status = searchParams.get('status');
-    const type = searchParams.get('type');
-    const limit = parseInt(searchParams.get('limit') || '50');
-
-    const supabase = getSupabaseAdmin();
-    let query = supabase.from('tasks').select('*');
-
-    if (deviceId) {
-      query = query.eq('device_id', deviceId);
-    }
-    if (status) {
-      query = query.eq('status', status);
-    }
-    if (type) {
-      query = query.eq('type', type);
-    }
-
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-    return NextResponse.json(data || []);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+ const auth=await requireUser(request); if(auth.response||!auth.user)return auth.response;
+ const p=new URL(request.url).searchParams, deviceRef=p.get('deviceId'), status=p.get('status'), type=p.get('type');
+ const limit=Math.min(Math.max(Number(p.get('limit')||50)||50,1),100), db=getSupabaseAdmin();
+ let q=db.from('tasks').select('*').order('created_at',{ascending:false}).limit(limit);
+ const {data:owned}=await db.from('devices').select('id,device_id').eq('owner_id',auth.user.id);
+ const devices=owned??[];
+ if(deviceRef){const d=devices.find(x=>x.id===deviceRef||x.device_id===deviceRef);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});q=q.eq('device_id',d.id);}
+ else q=q.in('device_id',devices.map(x=>x.id));
+ if(status)q=q.eq('status',status); if(type)q=q.eq('type',type);
+ const {data,error}=await q; if(error)return NextResponse.json({error:'No se pudieron consultar las tareas'},{status:500});
+ return NextResponse.json(data??[]);
 }
-
-/**
- * POST /api/tasks
- * Crea una nueva tarea (desde el controlador) o reporta resultado (desde el agente).
- * Si el body incluye "id", se actualiza en lugar de crear.
- */
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-
-    // Si trae id + status, tratar como actualización
-    if (body.id && (body.status || body.result || body.error)) {
-      return updateTask(body.id, body);
-    }
-
-    // Validación para crear tarea
-    if (!body.device_id || !body.type) {
-      return NextResponse.json(
-        { error: 'device_id y type son requeridos' },
-        { status: 400 }
-      );
-    }
-
-    const supabase = getSupabaseAdmin();
-    const task = {
-      device_id: body.device_id,
-      type: body.type,
-      payload: body.payload || null,
-      status: body.status || 'queued',
-      result: body.result || null,
-      error: body.error || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await (supabase.from('tasks') as any).insert([task]).select().single();
-    if (error) throw error;
-
-    return NextResponse.json(data, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+export async function POST(request:NextRequest){
+ const auth=await requireUser(request);if(auth.response||!auth.user)return auth.response;
+ try{
+  const b=await request.json(), ref=String(b.device_id||''), type=String(b.type||'');
+  const allowed=['install','uninstall','launch','list_apps','device_info','reboot','pin_app','notify','kiosk_enable','kiosk_disable','block_app','unblock_app','get_usage'];
+  if(!ref||!allowed.includes(type))return NextResponse.json({error:'Equipo o tipo de tarea no válido'},{status:400});
+  const db=getSupabaseAdmin(),{data:owned}=await db.from('devices').select('id,device_id').eq('owner_id',auth.user.id);
+  const d=(owned??[]).find(x=>x.id===ref||x.device_id===ref);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+  const {data,error}=await db.from('tasks').insert({device_id:d.id,type,payload:b.payload??null,status:'queued',created_at:new Date().toISOString(),updated_at:new Date().toISOString()}).select('*').single();
+  if(error)return NextResponse.json({error:'No se pudo crear la tarea'},{status:500});
+  await db.from('device_audit_logs').insert({device_id:d.id,owner_id:auth.user.id,actor_id:auth.user.id,action:'task_created',metadata:{task_id:data.id,type}});
+  return NextResponse.json(data,{status:201});
+ }catch{return NextResponse.json({error:'Solicitud inválida'},{status:400});}
 }
-
-/**
- * PATCH /api/tasks
- * Actualiza estado/resultado de una tarea existente.
- * Body: { id, status, result?, error? }
- */
-export async function PATCH(request: NextRequest) {
-  try {
-    const body = await request.json();
-    if (!body.id) {
-      return NextResponse.json({ error: 'id es requerido' }, { status: 400 });
-    }
-    return await updateTask(body.id, body);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// Helper interno para actualizar tarea
-async function updateTask(id: string, body: any) {
-  const allowed = ['status', 'result', 'error'];
-  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-  for (const key of allowed) {
-    if (key in body) updates[key] = body[key];
-  }
-
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await (supabase.from('tasks') as any)
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  return NextResponse.json(data);
-}
+export async function PATCH(){return NextResponse.json({error:'Los estados de ejecución sólo los reporta el agente autenticado'},{status:405});}
