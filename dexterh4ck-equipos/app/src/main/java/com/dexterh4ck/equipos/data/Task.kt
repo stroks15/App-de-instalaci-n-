@@ -28,7 +28,14 @@ data class Task(
  * Cuerpo para actualizar el estado de una tarea (PATCH /api/tasks/{id}).
  */
 data class TaskUpdate(
+    val id: String,
     val status: String,
     val result: String? = null,
     val error: String? = null
+)
+/** Respuesta del registro seguro del agente. El token sólo se entrega en el primer alta. */
+data class AgentRegistrationResponse(
+    val device: Map<String, Any?>? = null,
+    val agent_token: String? = null,
+    val token_rotated: Boolean? = null
 )
