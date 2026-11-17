@@ -1,4 +1,4 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// Top-level build file for the Android application.
 buildscript {
     repositories {
         google()
@@ -10,13 +10,9 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// Dependency repositories are declared centrally in settings.gradle.
+// Do not add allprojects.repositories when FAIL_ON_PROJECT_REPOS is enabled.
 
-task clean(type: Delete) {
+tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
