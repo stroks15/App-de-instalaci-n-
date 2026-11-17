@@ -1,120 +1,51 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase';
-
-export const dynamic = 'force-dynamic';
-
-/**
- * GET /api/storage?bucket=apks&path=&limit=100
- * Lista archivos en un bucket de Supabase Storage.
- */
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const bucket = searchParams.get('bucket') || 'apks';
-    const path = searchParams.get('path') || '';
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = parseInt(searchParams.get('offset') || '0');
-
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .list(path, { limit, offset, sortBy: { column: 'created_at', order: 'desc' } });
-
-    if (error) throw error;
-
-    // Agregar URL pública a cada archivo
-    const files = (data || []).map((f) => ({
-      ...f,
-      url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${bucket}/${path ? path + '/' : ''}${f.name}`,
-    }));
-
-    return NextResponse.json({ bucket, files });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Error listing files' }, { status: 500 });
-  }
+import {NextRequest,NextResponse} from 'next/server';
+import {getSupabaseAdmin} from '@/lib/supabase';
+import {requireUser} from '@/lib/request-auth';
+export const dynamic='force-dynamic';
+const BUCKET='apks';
+const MAX_FILE_SIZE=512*1024*1024;
+function safeSegment(value:string){return value.replace(/[^a-zA-Z0-9._-]/g,'_').replace(/^\.+/,'').slice(0,120)}
+export async function GET(request:NextRequest){
+ const auth=await requireUser(request);if(auth.response||!auth.user)return auth.response;
+ const p=new URL(request.url).searchParams,requested=p.get('path')||auth.user.id;
+ if(p.get('bucket')&&p.get('bucket')!==BUCKET)return NextResponse.json({error:'Bucket no permitido'},{status:400});
+ if(requested!==auth.user.id&&!requested.startsWith(auth.user.id+'/'))return NextResponse.json({error:'Ruta no autorizada'},{status:403});
+ const limit=Math.min(Math.max(Number(p.get('limit')||100)||100,1),200),offset=Math.max(Number(p.get('offset')||0)||0,0);
+ const db=getSupabaseAdmin(),{data,error}=await db.storage.from(BUCKET).list(requested,{limit,offset,sortBy:{column:'created_at',order:'desc'}});
+ if(error)return NextResponse.json({error:'No se pudieron listar los archivos'},{status:500});
+ const files=await Promise.all((data??[]).map(async f=>{
+  const path=`${requested}/${f.name}`,{data:signed}=await db.storage.from(BUCKET).createSignedUrl(path,86400);
+  return {...f,path,url:signed?.signedUrl??null};
+ }));
+ return NextResponse.json({bucket:BUCKET,files});
 }
-
-/**
- * POST /api/storage
- * Sube un archivo (APK) a Supabase Storage.
- * Acepta multipart/form-data con campos: file, bucket (opcional), path (opcional)
- */
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const bucket = (formData.get('bucket') as string) || 'apks';
-    const path = (formData.get('path') as string) || '';
-
-    if (!file) {
-      return NextResponse.json({ error: 'No se proporcionó archivo' }, { status: 400 });
-    }
-
-    const supabase = getSupabaseAdmin();
-
-    // Asegurar que el bucket existe
-    try {
-      const { data: buckets } = await supabase.storage.listBuckets();
-      if (!buckets?.find((b) => b.name === bucket)) {
-        await supabase.storage.createBucket(bucket, {
-          public: true,
-          fileSizeLimit: 512 * 1024 * 1024, // 512 MB
-          allowedMimeTypes: ['application/vnd.android.package-archive', 'application/octet-stream', 'application/pdf'],
-        });
-      }
-    } catch (e) {
-      console.log('Bucket check skipped:', (e as Error).message);
-    }
-
-    const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-    const fullPath = path ? `${path}/${fileName}` : fileName;
-
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(fullPath, bytes, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: file.type || 'application/vnd.android.package-archive',
-      });
-
-    if (error) throw error;
-
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fullPath);
-
-    return NextResponse.json({
-      path: data?.path || fullPath,
-      name: file.name,
-      size: file.size,
-      url: urlData.publicUrl,
-      bucket,
-    }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Error uploading file' }, { status: 500 });
-  }
+export async function POST(request:NextRequest){
+ const auth=await requireUser(request);if(auth.response||!auth.user)return auth.response;
+ try{
+  const form=await request.formData(),file=form.get('file');
+  if(!(file instanceof File))return NextResponse.json({error:'No se proporcionó archivo'},{status:400});
+  if(file.size<=0||file.size>MAX_FILE_SIZE)return NextResponse.json({error:'El archivo supera el tamaño permitido'},{status:413});
+  if(!['application/vnd.android.package-archive','application/octet-stream'].includes(file.type))return NextResponse.json({error:'Sólo se permiten archivos APK'},{status:415});
+  if(form.get('bucket')&&form.get('bucket')!==BUCKET)return NextResponse.json({error:'Bucket no permitido'},{status:400});
+  const name=safeSegment(file.name);if(!name.toLowerCase().endsWith('.apk'))return NextResponse.json({error:'El archivo debe tener extensión .apk'},{status:415});
+  const folder=safeSegment(String(form.get('path')||'')).replace(/^\/+|\/+$/g,'');
+  const fullPath=[auth.user.id,folder,name?`${Date.now()}-${name}`:'' ].filter(Boolean).join('/');
+  const db=getSupabaseAdmin();
+  const {error}=await db.storage.from(BUCKET).upload(fullPath,Buffer.from(await file.arrayBuffer()),{
+   cacheControl:'3600',upsert:false,contentType:'application/vnd.android.package-archive'
+  });
+  if(error)return NextResponse.json({error:'No se pudo guardar el APK'},{status:500});
+  const {data:signed,error:signedError}=await db.storage.from(BUCKET).createSignedUrl(fullPath,86400);
+  if(signedError||!signed?.signedUrl)return NextResponse.json({error:'No se pudo generar el enlace temporal'},{status:500});
+  return NextResponse.json({path:fullPath,name:file.name,size:file.size,url:signed.signedUrl,bucket:BUCKET},{status:201});
+ }catch{return NextResponse.json({error:'Solicitud de archivo inválida'},{status:400});}
 }
-
-/**
- * DELETE /api/storage?bucket=apks&path=filename.apk
- * Elimina un archivo del storage.
- */
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const bucket = searchParams.get('bucket') || 'apks';
-    const path = searchParams.get('path');
-
-    if (!path) {
-      return NextResponse.json({ error: 'path es requerido' }, { status: 400 });
-    }
-
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.storage.from(bucket).remove([path]);
-
-    if (error) throw error;
-
-    return NextResponse.json({ message: 'Archivo eliminado correctamente' });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Error deleting file' }, { status: 500 });
-  }
+export async function DELETE(request:NextRequest){
+ const auth=await requireUser(request);if(auth.response||!auth.user)return auth.response;
+ const p=new URL(request.url).searchParams,path=p.get('path')||'';
+ if(p.get('bucket')&&p.get('bucket')!==BUCKET)return NextResponse.json({error:'Bucket no permitido'},{status:400});
+ if(!path||!path.startsWith(auth.user.id+'/'))return NextResponse.json({error:'Ruta no autorizada'},{status:403});
+ const {error}=await getSupabaseAdmin().storage.from(BUCKET).remove([path]);
+ if(error)return NextResponse.json({error:'No se pudo eliminar el archivo'},{status:500});
+ return NextResponse.json({message:'Archivo eliminado correctamente'});
 }
