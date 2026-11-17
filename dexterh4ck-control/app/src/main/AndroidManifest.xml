@@ -18,15 +18,15 @@
         android:theme="@style/Theme.DexterControl"
         android:usesCleartextTraffic="true">
 
-        <!-- Activity principal: lista de dispositivos -->
-        <activity
-            android:name=".ui.DeviceListActivity"
-            android:exported="true">
+        <activity android:name=".ui.LoginActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Panel protegido; sólo se abre después de autenticar -->
+        <activity android:name=".ui.DeviceListActivity" android:exported="false" />
 
         <!-- Activity de gestión de un dispositivo seleccionado -->
         <activity
