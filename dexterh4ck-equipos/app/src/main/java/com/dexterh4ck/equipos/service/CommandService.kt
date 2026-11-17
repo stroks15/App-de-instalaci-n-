@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.dexterh4ck.equipos.data.*
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
+import com.dexterh4ck.equipos.util.PairingCode
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
@@ -113,6 +114,8 @@ class CommandService : Service() {
                 val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
                 val device = DeviceRegistration(
                     device_id = config.deviceId,
+                    hardware_id = config.deviceId,
+                    pairing_code = PairingCode.getOrCreate(this@CommandService),
                     name = config.deviceName,
                     type = "android_tv",
                     platform = "fireos".takeIf { Build.MANUFACTURER.contains("Amazon", ignoreCase = true) } ?: "android",
