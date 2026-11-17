@@ -75,7 +75,7 @@ object DevicePolicyHelper {
 
     fun stopLockTaskIfActive(activity: Activity) {
         try {
-            if (activity.isInLockTaskMode) activity.stopLockTask()
+            activity.stopLockTask()
         } catch (e: Exception) {}
     }
 
