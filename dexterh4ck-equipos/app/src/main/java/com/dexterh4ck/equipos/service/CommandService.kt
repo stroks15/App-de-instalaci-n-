@@ -95,8 +95,10 @@ class CommandService : Service() {
             deviceId = prefs.getString(AgentConfig.KEY_DEVICE_ID, androidId) ?: androidId,
             deviceName = prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV") ?: "Equipo TV",
             isPaired = prefs.getBoolean(AgentConfig.KEY_IS_PAIRED, false),
-            serverUrl = prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL)
-                ?: AgentConfig.DEFAULT_SERVER_URL
+            serverUrl = (prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL)
+                ?: AgentConfig.DEFAULT_SERVER_URL).let { saved ->
+                if (saved.contains("supabase.co", ignoreCase = true)) AgentConfig.DEFAULT_SERVER_URL else saved
+            }
         )
     }
 
@@ -165,6 +167,12 @@ class CommandService : Service() {
 
     private suspend fun checkForCommands() {
         if (config.deviceId.isEmpty()) return
+        val token = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+            .getString(AgentConfig.KEY_AGENT_TOKEN, null)
+        if (token.isNullOrBlank()) {
+            registerDevice()
+            return
+        }
         val response = api.getTasks(config.deviceId, "queued")
         if (response.isSuccessful) {
             val tasks = response.body() ?: emptyList()
