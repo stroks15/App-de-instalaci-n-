@@ -11,7 +11,7 @@ object PairingCode {
 
     fun getOrCreate(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.getString(KEY, null)?.let { if (it.matches(Regex("^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$"))) return it }
+        prefs.getString(KEY, null)?.let { if (it.matches(Regex("^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789](?:{5}|{8})$"))) return it }
         val code = buildString { repeat(8) { append(ALPHABET[random.nextInt(ALPHABET.length)]) } }
         prefs.edit().putString(KEY, code).apply()
         return code
