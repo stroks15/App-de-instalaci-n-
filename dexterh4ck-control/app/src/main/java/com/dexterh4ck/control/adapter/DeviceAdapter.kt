@@ -8,9 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.data.Device
 
-/**
- * Adapter para mostrar la lista de dispositivos en el RecyclerView.
- */
+/** Adapter para mostrar la lista de dispositivos en el RecyclerView. */
 class DeviceAdapter(
     private var devices: List<Device>,
     private val onItemClick: (Device) -> Unit
@@ -23,7 +21,12 @@ class DeviceAdapter(
         val statusIndicator: View = view.findViewById(R.id.viewStatusIndicator)
 
         init {
-            view.setOnClickListener { onItemClick(devices[adapterPosition]) }
+            view.setOnClickListener {
+                val position = bindingAdapterPosition
+                if (position != RecyclerView.NO_POSITION && position in devices.indices) {
+                    onItemClick(devices[position])
+                }
+            }
         }
     }
 

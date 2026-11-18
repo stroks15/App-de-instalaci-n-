@@ -9,6 +9,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.app.ActivityManager
+import android.app.AlertDialog
 import android.os.Environment
 import android.os.StatFs
 import android.content.Intent
@@ -69,6 +70,53 @@ class MainActivity : AppCompatActivity() {
             try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
             catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         }
+        findViewById<Button>(R.id.btnDeviceOwner).setOnClickListener { showDeviceOwnerSetup() }
+        refreshDeviceOwnerStatus()
+    }
+
+    private fun refreshDeviceOwnerStatus() {
+        val status = findViewById<TextView>(R.id.tvDeviceOwnerStatus)
+        val button = findViewById<Button>(R.id.btnDeviceOwner)
+        if (DevicePolicyHelper.isDeviceOwner(this)) {
+            val policyStatus = DevicePolicyHelper.configureDedicatedDevice(this)
+            status.text = "Device Owner: ACTIVADO · $policyStatus"
+            button.text = "Device Owner activo · Ver estado"
+        } else {
+            status.text = "Device Owner: no activado · requiere configuración inicial por ADB"
+            button.text = "Activar Device Owner"
+        }
+    }
+
+    private fun showDeviceOwnerSetup() {
+        if (DevicePolicyHelper.isDeviceOwner(this)) {
+            val result = DevicePolicyHelper.configureDedicatedDevice(this)
+            refreshDeviceOwnerStatus()
+            AlertDialog.Builder(this).setTitle("Device Owner activo")
+                .setMessage(result + "\n\nLa instalación silenciosa está habilitada cuando Android y el fabricante permiten PackageInstaller.")
+                .setPositiveButton("Aceptar", null).show()
+            return
+        }
+        val command = "adb shell dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver"
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        AlertDialog.Builder(this)
+            .setTitle("Activar Device Owner")
+            .setMessage(
+                "Android no permite que una app se otorgue a sí misma el rol Device Owner. " +
+                    "Conecta el TV Box / Fire Stick a una computadora con ADB, instala Dexterh4ck Equipos y ejecuta:\n\n" +
+                    command + "\n\n" +
+                    "IMPORTANTE: normalmente sólo se puede activar en un equipo recién restablecido de fábrica, antes de completar el aprovisionamiento y sin cuentas añadidas. " +
+                    "Este botón no ejecuta el comando; sólo lo prepara para copiar."
+            )
+            .setNegativeButton("Cerrar", null)
+            .setNeutralButton("Copiar comando") { _, _ ->
+                clipboard.setPrimaryClip(ClipData.newPlainText("Comando Device Owner", command))
+                Toast.makeText(this, "Comando ADB copiado", Toast.LENGTH_LONG).show()
+            }
+            .setPositiveButton("Abrir ajustes ADB") { _, _ ->
+                try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+                catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+            }
+            .show()
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -85,7 +133,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::adbStatus.isInitialized) { refreshAdbStatus(); refreshResourceStats() }
+        if (::adbStatus.isInitialized) { refreshAdbStatus(); refreshResourceStats(); refreshDeviceOwnerStatus(); ensureAgentServiceRunning() }
     }
 
     private fun refreshResourceStats() {
@@ -111,6 +159,14 @@ class MainActivity : AppCompatActivity() {
     private fun refreshAdbStatus() {
         val enabled = runCatching { Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 1 }.getOrDefault(false)
         adbStatus.text = if (enabled) "ADB: Activado" else "ADB: Desactivado — habilítalo si necesitas depuración"
+    }
+
+    private fun ensureAgentServiceRunning() {
+        val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+        val savedUrl = prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL).orEmpty()
+        if (savedUrl.startsWith("https://") && prefs.getString(AgentConfig.KEY_DEVICE_ID, null) != null) {
+            runCatching { ContextCompat.startForegroundService(this, Intent(this, CommandService::class.java)) }
+        }
     }
 
     private fun saveAndStart() {

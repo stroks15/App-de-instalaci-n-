@@ -36,13 +36,10 @@
             android:layout_height="48dp" android:layout_weight="1"
             android:text="＋ Vincular equipo" android:textAllCaps="false"
             android:textColor="#FFFFFF" android:backgroundTint="#0862E8" />
-        <Button android:id="@+id/btnRefresh" android:layout_width="52dp"
+        <Button android:id="@+id/btnMenu" android:layout_width="wrap_content"
             android:layout_height="48dp" android:layout_marginStart="8dp"
-            android:text="↻" android:textSize="20sp" android:textColor="#0862E8"
-            android:backgroundTint="#E8F0FE" />
-        <Button android:id="@+id/btnBulk" android:layout_width="52dp"
-            android:layout_height="48dp" android:layout_marginStart="8dp"
-            android:text="☷" android:textSize="18sp" android:textColor="#0862E8"
+            android:minWidth="112dp" android:text="☰  Menú"
+            android:textAllCaps="false" android:textColor="#0862E8"
             android:backgroundTint="#E8F0FE" />
     </LinearLayout>
 

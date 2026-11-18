@@ -85,5 +85,59 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     return NextResponse.json({ error: 'Tarea no encontrada para este equipo' }, { status: 404 });
   }
 
+  // El agente sólo marca "downloaded" después de guardar y validar el APK en su almacenamiento privado.
+  // En ese momento se borra el objeto temporal de Storage, incluso si Control se cierra o pierde conexión.
+  if (typeof body.result === 'string' && (status === 'in_progress' || status === 'awaiting_user')) {
+    try {
+      const progress = JSON.parse(body.result) as { phase?: string };
+      if (['downloaded', 'install', 'installed'].includes(progress.phase ?? '')) {
+        const { data: originalTask } = await ((db.from('tasks') as any) as any)
+          .select('payload')
+          .eq('id', id)
+          .eq('device_id', auth.device.id)
+          .maybeSingle();
+        const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
+          ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
+          : '';
+        const apkUrl = typeof originalTask?.payload === 'string' ? new URL(originalTask.payload) : null;
+        const signedPrefix = '/storage/v1/object/sign/apks/';
+        if (
+          apkUrl &&
+          supabaseOrigin &&
+          apkUrl.origin === supabaseOrigin &&
+          apkUrl.pathname.startsWith(signedPrefix) &&
+          typeof auth.device.owner_id === 'string'
+        ) {
+          const objectPath = decodeURIComponent(apkUrl.pathname.slice(signedPrefix.length));
+          if (objectPath.startsWith(auth.device.owner_id + '/')) {
+            // En instalaciones masivas el mismo objeto lo comparten varios equipos.
+            // Borrarlo sólo cuando todos los destinatarios ya lo descargaron o resolvieron su tarea.
+            const { data: siblings } = await ((db.from('tasks') as any) as any)
+              .select('status,result')
+              .eq('type', 'install')
+              .eq('payload', originalTask.payload);
+            const allDevicesHaveCopy = (siblings ?? []).length > 0 && (siblings ?? []).every((item: any) => {
+              if (['awaiting_user', 'done', 'completed', 'failed', 'expired'].includes(item.status)) return true;
+              if (item.status !== 'in_progress') return false;
+              try {
+                const result = typeof item.result === 'string' ? JSON.parse(item.result) : item.result;
+                return ['downloaded', 'install', 'installed'].includes(result?.phase);
+              } catch {
+                return false;
+              }
+            });
+            if (allDevicesHaveCopy) {
+              const { error: removeError } = await db.storage.from('apks').remove([objectPath]);
+              if (removeError) console.error('Temporary APK cleanup failed:', removeError.message);
+            }
+          }
+        }
+      }
+    } catch (cleanupError) {
+      // No se invalida el progreso de instalación si la limpieza temporal falla.
+      console.error('Temporary APK cleanup skipped:', cleanupError);
+    }
+  }
+
   return NextResponse.json({ task: data });
 }

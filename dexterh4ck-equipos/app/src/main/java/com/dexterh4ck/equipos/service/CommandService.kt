@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Servicio en segundo plano de Dexterh4ck Equipos.
  *
- * Hace polling al backend cada 5 segundos buscando tareas pendientes
+ * Mantiene un servicio foreground persistente, renueva el registro cada 30 segundos y consulta tareas cada 5 segundos
  * (install, uninstall, launch, list_apps, device_info, reboot, pin_app),
  * las ejecuta en el dispositivo y reporta el resultado.
  */
@@ -51,6 +51,10 @@ class CommandService : Service() {
         private const val POLL_INTERVAL = 5_000L
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 60L
+        const val ACTION_INSTALL_RESULT = "com.dexterh4ck.equipos.ACTION_INSTALL_RESULT"
+        const val EXTRA_INSTALL_TASK_ID = "install_task_id"
+        const val EXTRA_INSTALL_STATE = "install_state"
+        const val EXTRA_INSTALL_MESSAGE = "install_message"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -58,6 +62,7 @@ class CommandService : Service() {
     @Volatile private var lastRegistrationAt = 0L
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
+    private var agentWakeLock: PowerManager.WakeLock? = null
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val outgoing = chain.request()
@@ -93,9 +98,16 @@ class CommandService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification("Dexterh4ck Equipos activo"))
+        acquireAgentWakeLock()
         if (intent?.action == PendingInstallActionReceiver.ACTION_ACCEPT) {
             val taskId = intent.getStringExtra(PendingInstallActionReceiver.EXTRA_TASK_ID)
             if (!taskId.isNullOrBlank()) scope.launch { acceptPendingInstall(taskId) }
+        }
+        if (intent?.action == ACTION_INSTALL_RESULT) {
+            val taskId = intent.getStringExtra(EXTRA_INSTALL_TASK_ID)
+            val state = intent.getStringExtra(EXTRA_INSTALL_STATE)
+            val message = intent.getStringExtra(EXTRA_INSTALL_MESSAGE).orEmpty()
+            if (!taskId.isNullOrBlank()) scope.launch { handleInstallResult(taskId, state, message) }
         }
         return START_STICKY
     }
@@ -103,8 +115,20 @@ class CommandService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        super.onDestroy()
+        runCatching { if (agentWakeLock?.isHeld == true) agentWakeLock?.release() }
+        agentWakeLock = null
         scope.cancel()
+        super.onDestroy()
+    }
+
+    /** Mantiene CPU despierta para el heartbeat del TV/Box mientras el servicio foreground está activo. */
+    private fun acquireAgentWakeLock() {
+        if (agentWakeLock?.isHeld == true) return
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        agentWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:AgentHeartbeat").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
     }
 
     // ====================== CONFIGURACIÓN ======================
@@ -145,7 +169,10 @@ class CommandService : Service() {
         lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
-                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val now = timestampFormat.format(Date())
                 val device = DeviceRegistration(
                     device_id = config.deviceId,
                     hardware_id = config.deviceId,
@@ -185,7 +212,7 @@ class CommandService : Service() {
         scope.launch {
             while (isActive) {
                 try {
-                    if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
+                    if (System.currentTimeMillis() - lastRegistrationAt >= 30_000L) registerDevice()
                     expireOldPendingInstalls()
                     ParentalControlStore.expire(this@CommandService)
                     checkForCommands()
@@ -222,7 +249,7 @@ class CommandService : Service() {
         }
         reportTask(task.id, "in_progress")
         val (resultJson, errorMsg) = when (task.type) {
-            "install" -> runCatching { installApp(task.payload) }.fold(
+            "install" -> runCatching { installApp(task.id, task.payload) }.fold(
                 { "\"${escapeJson(it)}\"" to null },
                 { "null" to it.message }
             )
@@ -281,9 +308,42 @@ class CommandService : Service() {
             else -> ("null" to "Tipo de tarea desconocido: ${task.type}")
         }
 
-        val finalStatus = if (errorMsg != null) "failed" else "completed"
-        reportTask(task.id, finalStatus, result = resultJson, error = errorMsg)
+        val finalStatus = when {
+            errorMsg != null -> "failed"
+            task.type == "install" -> "in_progress" // El estado terminal llega desde InstallResultReceiver.
+            else -> "completed"
+        }
+        val finalResult = if (task.type == "install" && errorMsg == null) {
+            JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", "APK transferido a PackageInstaller; esperando confirmación del sistema.")
+            }.toString()
+        } else resultJson
+        reportTask(task.id, finalStatus, result = finalResult, error = errorMsg)
         updateNotification(finalStatus, task.type)
+    }
+
+    private suspend fun handleInstallResult(taskId: String, state: String?, message: String) {
+        when (state) {
+            "success" -> {
+                reportTask(taskId, "completed", result = JSONObject().apply {
+                    put("phase", "installed")
+                    put("progress", 100)
+                    put("message", message.ifBlank { "Instalación completada en el equipo." })
+                }.toString())
+                updateNotification("completed", "install")
+            }
+            "pending" -> reportTask(taskId, "in_progress", result = JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", message.ifBlank { "Esperando confirmación de Android en la pantalla del equipo." })
+            }.toString())
+            else -> {
+                reportTask(taskId, "failed", error = message.ifBlank { "Android no pudo completar la instalación." })
+                updateNotification("failed", "install")
+            }
+        }
     }
 
     private fun pendingInstallPrefs() = getSharedPreferences("pending_user_installs", Context.MODE_PRIVATE)
@@ -320,12 +380,22 @@ class CommandService : Service() {
             expirePendingInstall(task.id)
             return
         }
-        prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
-        if (!prefs.getBoolean("${key}_reported", false)) {
-            val reported = reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
-            if (reported) prefs.edit().putBoolean("${key}_reported", true).apply()
+        try {
+            // Descarga primero al almacenamiento privado del TV; después Control puede borrar el temporal en la nube.
+            val apkFile = downloadApk(task.id, task.payload)
+            // Persistir primero el archivo local para que un reinicio no pierda la referencia.
+            prefs.edit().putString("${key}_file", apkFile.absolutePath)
+                .putLong("${key}_expires", expiresAt).apply()
+            val reported = reportTask(task.id, "awaiting_user", result = JSONObject().apply {
+                put("phase", "downloaded")
+                put("progress", 100)
+                put("message", "APK descargado localmente; esperando aceptación en la TV.")
+            }.toString(), error = "Esperando aceptación local; vence a las 48 horas.")
+            prefs.edit().putBoolean("${key}_reported", reported).apply()
+            showPendingInstallNotification(task.id, apkFile.name, expiresAt)
+        } catch (error: Exception) {
+            reportTask(task.id, "failed", error = "No se pudo descargar el APK: ${error.message}")
         }
-        showPendingInstallNotification(task.id, task.payload, expiresAt)
     }
 
     private fun showPendingInstallNotification(taskId: String, apkUrl: String, expiresAt: Long) {
@@ -362,30 +432,43 @@ class CommandService : Service() {
     private suspend fun acceptPendingInstall(taskId: String) {
         val prefs = pendingInstallPrefs()
         val key = "task_$taskId"
-        val url = prefs.getString("${key}_url", null)
+        val localPath = prefs.getString("${key}_file", null)
         val expiry = prefs.getLong("${key}_expires", 0L)
-        if (url.isNullOrBlank()) return
+        if (localPath.isNullOrBlank()) return
         if (System.currentTimeMillis() >= expiry) {
+            expirePendingInstall(taskId)
+            return
+        }
+        val apkFile = File(localPath)
+        if (!apkFile.isFile || apkFile.length() <= 0L) {
             expirePendingInstall(taskId)
             return
         }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
-        prefs.edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        prefs.edit().remove("${key}_file").remove("${key}_expires").remove("${key}_reported").apply()
         reportTask(taskId, "in_progress")
         try {
-            val result = installApp(url)
-            reportTask(taskId, "completed", result = "\"${escapeJson(result)}\"")
-            updateNotification("completed", "install")
+            val result = installApkFile(taskId, apkFile)
+            reportTask(taskId, "in_progress", result = JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", result)
+            }.toString())
+            updateNotification("in_progress", "install")
         } catch (e: Exception) {
             reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
             updateNotification("failed", "install")
+        } finally {
+            apkFile.delete()
         }
     }
 
     private suspend fun expirePendingInstall(taskId: String) {
         val key = "task_$taskId"
-        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        val prefs = pendingInstallPrefs()
+        prefs.getString("${key}_file", null)?.let { File(it).delete() }
+        prefs.edit().remove("${key}_file").remove("${key}_expires").remove("${key}_reported").apply()
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
         reportTask(taskId, "expired", error = "Solicitud cancelada: no fue aceptada en 48 horas.")
@@ -399,8 +482,8 @@ class CommandService : Service() {
             val taskId = expiryKey.removePrefix("task_").removeSuffix("_expires")
             if (expires > 0L && now >= expires) expirePendingInstall(taskId)
             else {
-                val url = prefs.getString("task_${taskId}_url", null)
-                if (!url.isNullOrBlank()) showPendingInstallNotification(taskId, url, expires)
+                val localPath = prefs.getString("task_${taskId}_file", null)
+                if (!localPath.isNullOrBlank()) showPendingInstallNotification(taskId, File(localPath).name, expires)
             }
         }
     }
@@ -423,62 +506,115 @@ class CommandService : Service() {
      * Instalación remota: descarga el APK desde la URL (Supabase Storage)
      * y lo instala con la API PackageInstaller (UI de confirmación en TV).
      */
-    private suspend fun installApp(apkUrl: String): String {
+    private suspend fun installApp(taskId: String, apkUrl: String): String {
         if (apkUrl.isBlank()) throw IllegalStateException("URL de APK vacía")
-
-        val apkFile = downloadApk(apkUrl)
-        val apkUri: Uri = FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            apkFile
-        )
-
-        return installWithPackageInstaller(apkUri)
+        reportInstallProgress(taskId, "download", 0, 0L)
+        val apkFile = downloadApk(taskId, apkUrl)
+        reportInstallProgress(taskId, "downloaded", 100, apkFile.length())
+        return installApkFile(taskId, apkFile)
     }
 
-    private suspend fun downloadApk(url: String): File {
-        val request = Request.Builder().url(url).build()
-        val response = httpClient.newCall(request).execute()
-        if (!response.isSuccessful) throw IOException("Error descargando APK: HTTP ${response.code}")
+    private suspend fun installApkFile(taskId: String, apkFile: File): String {
+        if (!apkFile.isFile || apkFile.length() <= 0L) throw IOException("El APK local no existe o está vacío")
+        try {
+            reportInstallProgress(taskId, "install", 90, apkFile.length())
+            val apkUri: Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
+            return installWithPackageInstaller(apkUri, taskId, apkFile.length())
+        } finally {
+            apkFile.delete()
+        }
+    }
 
-        val body = response.body ?: throw IOException("Cuerpo vacío en la respuesta")
-        val target = File(cacheDir, "pending_install_${System.currentTimeMillis()}.apk")
-        body.byteStream().use { input ->
-            FileOutputStream(target).use { output ->
-                input.copyTo(output)
+    private suspend fun reportInstallProgress(taskId: String, phase: String, percent: Int, totalBytes: Long) {
+        val payload = JSONObject().apply {
+            put("phase", phase)
+            put("progress", percent.coerceIn(0, 100))
+            put("totalBytes", totalBytes)
+        }.toString()
+        reportTask(taskId, "in_progress", result = payload)
+    }
+
+    private suspend fun downloadApk(taskId: String, url: String): File {
+        val request = Request.Builder().url(url).get().build()
+        val response = httpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            response.close()
+            throw IOException("Error descargando APK: HTTP ${response.code}")
+        }
+        response.use { httpResponse ->
+            val body = httpResponse.body ?: throw IOException("Cuerpo vacío en la respuesta")
+            val total = body.contentLength()
+            val target = File(cacheDir, "pending_install_${System.currentTimeMillis()}.apk")
+            try {
+                body.byteStream().use { input ->
+                    FileOutputStream(target).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var downloaded = 0L
+                        var lastReported = -1
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count == -1) break
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            val percent = if (total > 0L) ((downloaded * 90L) / total).toInt().coerceIn(0, 90) else 0
+                            if (percent != lastReported && (percent % 5 == 0 || percent == 90)) {
+                                reportInstallProgress(taskId, "download", percent, total)
+                                lastReported = percent
+                            }
+                        }
+                    }
+                }
+                if (!target.exists() || target.length() == 0L) throw IOException("APK descargado vacío")
+                reportInstallProgress(taskId, "install", 90, total)
+                return target
+            } catch (error: Exception) {
+                target.delete()
+                throw error
             }
         }
-        if (!target.exists() || target.length() == 0L) throw IOException("APK descargado vacío")
-        return target
     }
 
-    /**
-     * Instalación con PackageInstaller Session API.
-     * En Android TV muestra el diálogo de confirmación del sistema (navegable con mando).
-     */
-    private fun installWithPackageInstaller(apkUri: Uri): String {
+    private suspend fun installWithPackageInstaller(apkUri: Uri, taskId: String, totalBytes: Long): String {
         val installer = packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         val sessionId = installer.createSession(params)
         val session = installer.openSession(sessionId)
-
-        contentResolver.openInputStream(apkUri)?.use { input ->
-            val out = session.openWrite("dexter_apk", 0, -1)
-            input.copyTo(out)
-            session.fsync(out)
-            try { out.close() } catch (_: Exception) {}
+        try {
+            contentResolver.openInputStream(apkUri)?.use { input ->
+                session.openWrite("dexter_apk", 0, totalBytes).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var copied = 0L
+                    var lastReported = 90
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        output.write(buffer, 0, count)
+                        copied += count
+                        val percent = if (totalBytes > 0L) (90 + copied * 9L / totalBytes).toInt().coerceIn(90, 99) else 95
+                        if (percent != lastReported && percent % 2 == 0) {
+                            reportInstallProgress(taskId, "install", percent, totalBytes)
+                            lastReported = percent
+                        }
+                    }
+                    session.fsync(output)
+                }
+            } ?: throw IOException("No se pudo abrir el APK temporal")
+            val intent = Intent(this, InstallResultReceiver::class.java).apply {
+                putExtra("task_id", taskId)
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, sessionId, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+            )
+            session.commit(pendingIntent.intentSender)
+        } finally {
+            session.close()
         }
-
-        val intent = Intent(this, InstallResultReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, sessionId, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
-        )
-        session.commit(pendingIntent.intentSender)
-
-        session.close()
-        return if (DevicePolicyHelper.isDeviceOwner(this)) "Instalación silenciosa enviada como Device Owner." else "Instalación enviada; Android solicitará confirmación porque no hay Device Owner."
+        reportInstallProgress(taskId, "install", 99, totalBytes)
+        return if (DevicePolicyHelper.isDeviceOwner(this))
+            "APK descargado y enviado a PackageInstaller. Device Owner activo; instalación silenciosa solicitada."
+        else "APK descargado y enviado a PackageInstaller. Android solicitará confirmación en pantalla."
     }
 
     // ====================== DESINSTALAR ======================

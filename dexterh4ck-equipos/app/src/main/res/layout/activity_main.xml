@@ -93,6 +93,16 @@
                 android:text="Activar / configurar depuración ADB"
                 android:textAllCaps="false" android:textColor="#FFFFFF"
                 android:backgroundTint="#5146B8" android:layout_marginTop="10dp" />
+            <Button android:id="@+id/btnDeviceOwner"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Activar Device Owner"
+                android:textAllCaps="false" android:textColor="#FFFFFF"
+                android:backgroundTint="#16865D" android:layout_marginTop="10dp" />
+            <TextView android:id="@+id/tvDeviceOwnerStatus"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Device Owner: sin activar"
+                android:textColor="#AAB7CA" android:textSize="13sp"
+                android:layout_marginTop="8dp" />
         </LinearLayout>
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
