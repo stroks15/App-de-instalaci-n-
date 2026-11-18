@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
  const {data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
  const devices=owned??[];
  if(deviceRef){const d=devices.find((x: any)=>x.id===deviceRef||x.device_id===deviceRef);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});q=q.eq('device_id',d.id);}
- else q=q.in('device_id',devices.map(x=>x.id));
+ else q=q.in('device_id',devices.map((x: any)=>x.id));
  if(status)q=q.eq('status',status==='completed'?'done':status); if(type)q=q.eq('type',type);
  const {data,error}=await q; if(error)return NextResponse.json({error:'No se pudieron consultar las tareas'},{status:500});
  return NextResponse.json(data??[]);
