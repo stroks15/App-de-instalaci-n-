@@ -75,7 +75,6 @@ class MainActivity : AppCompatActivity() {
             .putString(AgentConfig.KEY_SERVER_URL, url)
             .putString(AgentConfig.KEY_DEVICE_NAME, name)
             .putString(AgentConfig.KEY_DEVICE_ID, hardwareId)
-            .putBoolean(AgentConfig.KEY_IS_PAIRED, true)
             .apply()
         try {
             ContextCompat.startForegroundService(this, Intent(this, CommandService::class.java))
