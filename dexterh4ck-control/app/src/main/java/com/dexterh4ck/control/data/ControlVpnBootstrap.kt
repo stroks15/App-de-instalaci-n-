@@ -14,7 +14,6 @@ import java.util.concurrent.TimeUnit
 object ControlVpnBootstrap {
     private const val PREFS = "dexter_control_wg"
     private val jsonType = "application/json; charset=utf-8".toMediaType()
-    private val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
 
     fun register(context: Context, accessToken: String): JSONObject {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -26,11 +25,13 @@ object ControlVpnBootstrap {
         val name = "Dexterh4ck Control · " + Build.MODEL.take(50)
         val body = JSONObject().put("device_id", deviceId).put("device_name", name)
             .put("public_key", pair.publicKey.toBase64()).toString().toRequestBody(jsonType)
+        val authenticatedClient = AuthStore.client(context).newBuilder()
+            .connectTimeout(20, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
         val request = Request.Builder()
             .url(ApiConfig.BASE_URL.trimEnd('/') + "/api/devices/register-auth")
             .header("Authorization", "Bearer " + accessToken)
             .post(body).build()
-        val result = client.newCall(request).execute().use { response ->
+        val result = authenticatedClient.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val message = runCatching { JSONObject(raw).optString("error") }.getOrDefault("")
