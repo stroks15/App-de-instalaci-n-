@@ -134,7 +134,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnSetDeviceOwner).setOnClickListener {
             confirmAction("Enviar la orden Device Owner al agente. Requiere root/su y que Android permita el aprovisionamiento inicial.") {
-                sendTask("adb_command", "dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver")
+                sendTask("adb_command", "adb shell dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver")
             }
         }
         findViewById<Button>(R.id.btnReboot).setOnClickListener {
