@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, allowedApps } = body;
-    const allowedPackages = (Array.isArray(allowedApps) ? allowedApps : typeof allowedApps === 'string' ? allowedApps.split(/[,,\\n]/) : [])
+    const allowedPackages = (Array.isArray(allowedApps) ? allowedApps : typeof allowedApps === 'string' ? allowedApps.split(/[,\n]/) : [])
       .map((value: unknown) => String(value).trim())
       .filter((value: string) => value.length > 0);
     if (allowedPackages.some((pkg: string) => !/^[A-Za-z0-9_.]+$/.test(pkg))) {
