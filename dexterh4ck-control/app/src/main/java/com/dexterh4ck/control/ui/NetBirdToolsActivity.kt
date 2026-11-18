@@ -180,7 +180,7 @@ class NetBirdToolsActivity : ComponentActivity() {
         }
     }
 
-    private fun peers(): List<String> = peerText.lines().map(String::trim)
+    private fun peers(): List<String> = (peerText.lines().map(String::trim) + savedPeers.map { it.netbirdIp })
         .filter { it.matches(Regex("100\\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.(?:25[0-5]|2[0-4][0-9]|[01]?\\d?\\d)\\.(?:25[0-5]|2[0-4][0-9]|[01]?\\d?\\d)")) }
         .distinct()
 
