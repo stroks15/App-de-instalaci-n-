@@ -43,6 +43,10 @@ class DeviceDetailActivity : AppCompatActivity() {
     private lateinit var tvLastSeen: TextView
     private lateinit var viewOnlineIndicator: View
     private lateinit var progressTask: ProgressBar
+    private lateinit var installProgressContainer: View
+    private lateinit var installProgressRing: ProgressBar
+    private lateinit var installProgressPercent: TextView
+    private lateinit var installProgressStage: TextView
     private lateinit var tvTaskStatus: TextView
     private lateinit var tvTaskResult: TextView
     private lateinit var rvInstalledApps: RecyclerView
@@ -89,6 +93,10 @@ class DeviceDetailActivity : AppCompatActivity() {
         tvLastSeen = findViewById(R.id.tvLastSeen)
         viewOnlineIndicator = findViewById(R.id.viewOnlineIndicator)
         progressTask = findViewById(R.id.progressTask)
+        installProgressContainer = findViewById(R.id.installProgressContainer)
+        installProgressRing = findViewById(R.id.installProgressRing)
+        installProgressPercent = findViewById(R.id.installProgressPercent)
+        installProgressStage = findViewById(R.id.installProgressStage)
         tvTaskStatus = findViewById(R.id.tvTaskStatus)
         tvTaskResult = findViewById(R.id.tvTaskResult)
         rvInstalledApps = findViewById(R.id.rvInstalledApps)
@@ -157,44 +165,75 @@ class DeviceDetailActivity : AppCompatActivity() {
         viewOnlineIndicator.setBackgroundColor(getColor(color))
     }
 
+    private fun updateInstallProgress(percent: Int, stage: String, visible: Boolean = true) {
+        val safePercent = percent.coerceIn(0, 100)
+        installProgressContainer.visibility = if (visible) View.VISIBLE else View.GONE
+        installProgressStage.visibility = if (visible) View.VISIBLE else View.GONE
+        installProgressRing.isIndeterminate = false
+        installProgressRing.progress = safePercent
+        installProgressPercent.text = "$safePercent%"
+        installProgressStage.text = stage
+    }
+
     private fun uploadAndInstall(uri: Uri) {
-        setTaskStatus("Copiando APK...", true)
+        updateInstallProgress(0, "Leyendo APK del teléfono…")
+        setTaskStatus("Preparando APK local…", true)
         scope.launch {
             val tempFile = File(cacheDir, "upload_${System.currentTimeMillis()}.apk")
+            var uploadedPath: String? = null
             try {
                 withContext(Dispatchers.IO) {
                     val input = contentResolver.openInputStream(uri)
                         ?: throw IllegalStateException("Android no pudo abrir el archivo seleccionado")
                     input.use { source -> FileOutputStream(tempFile).use { output -> source.copyTo(output) } }
                 }
-                if (!tempFile.isFile || tempFile.length() < 1L) {
-                    throw IllegalStateException("El archivo seleccionado está vacío o no es accesible")
-                }
-                if (tempFile.length() > 1024L * 1024L * 1024L) {
-                    throw IllegalStateException("El APK supera el límite de 1 GB")
-                }
+                if (!tempFile.isFile || tempFile.length() < 1L) throw IllegalStateException("El archivo está vacío o no es accesible")
+                if (tempFile.length() > 512L * 1024L * 1024L) throw IllegalStateException("El APK supera el límite de 512 MB")
 
-                setTaskStatus("Subiendo APK al almacenamiento...", true)
-                val fileBody = tempFile.asRequestBody("application/vnd.android.package-archive".toMediaTypeOrNull())
-                val part = MultipartBody.Part.createFormData("file", tempFile.name, fileBody)
+                updateInstallProgress(0, "Subiendo APK temporal a la nube…")
+                setTaskStatus("Subiendo APK temporal a Supabase Storage…", true)
+                val mediaType = "application/vnd.android.package-archive".toMediaTypeOrNull()
+                val progressBody = object : okhttp3.RequestBody() {
+                    override fun contentType() = mediaType
+                    override fun contentLength() = tempFile.length()
+                    override fun writeTo(sink: okio.BufferedSink) {
+                        tempFile.inputStream().use { input ->
+                            val buffer = ByteArray(64 * 1024)
+                            var sent = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count == -1) break
+                                sink.write(buffer, 0, count)
+                                sent += count
+                                val percent = ((sent * 100L) / tempFile.length().coerceAtLeast(1L)).toInt()
+                                runOnUiThread { updateInstallProgress(percent, "Subiendo APK a la nube…") }
+                            }
+                        }
+                    }
+                }
+                val part = MultipartBody.Part.createFormData("file", tempFile.name, progressBody)
                 val bucket = "apks".toRequestBody("text/plain".toMediaTypeOrNull())
                 val upload = withContext(Dispatchers.IO) { api.uploadFile(part, bucket) }
-                if (!upload.isSuccessful) {
-                    throw IllegalStateException("Error al subir APK: HTTP ${upload.code()} ${upload.errorBody()?.string()?.take(180).orEmpty()}")
-                }
-                val apkUrl = upload.body()?.url?.takeIf { it.startsWith("https://") }
-                    ?: throw IllegalStateException("El servidor no devolvió una URL HTTPS válida")
-                setTaskStatus("Enviando instalación a $deviceName...", true)
+                if (!upload.isSuccessful) throw IllegalStateException("Error al subir APK: HTTP ${upload.code()} ${upload.errorBody()?.string()?.take(180).orEmpty()}")
+                val uploaded = upload.body() ?: throw IllegalStateException("El servidor no devolvió los datos del APK")
+                uploadedPath = uploaded.path
+                if (!uploaded.url.startsWith("https://")) throw IllegalStateException("El servidor no devolvió una URL HTTPS válida")
+
+                updateInstallProgress(0, "APK subido. Esperando descarga e instalación en $deviceName…")
+                setTaskStatus("Enviando instalación al equipo…", true)
                 val taskResponse = withContext(Dispatchers.IO) {
-                    api.createTask(TaskRequest(device_id = deviceId, type = "install", payload = apkUrl))
+                    api.createTask(TaskRequest(device_id = deviceId, type = "install", payload = uploaded.url))
                 }
-                if (!taskResponse.isSuccessful || taskResponse.body() == null) {
-                    throw IllegalStateException("No se pudo crear la tarea de instalación: HTTP ${taskResponse.code()}")
-                }
-                trackTask(taskResponse.body()!!.id, "Instalando APK en $deviceName...")
+                if (!taskResponse.isSuccessful || taskResponse.body() == null) throw IllegalStateException("No se pudo crear la tarea: HTTP ${taskResponse.code()}")
+                trackTask(taskResponse.body()!!.id, "Descargando APK en $deviceName…", uploadedPath)
+                uploadedPath = null // trackTask se encarga de borrar el objeto al terminar la tarea.
             } catch (e: Exception) {
                 setTaskStatus("No se pudo instalar: ${e.message}", false)
+                updateInstallProgress(0, "Error durante la transferencia o instalación")
             } finally {
+                if (uploadedPath != null) {
+                    runCatching { withContext(Dispatchers.IO) { api.deleteFile(path = uploadedPath!!) } }
+                }
                 tempFile.delete()
             }
         }
@@ -216,37 +255,63 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun trackTask(taskId: String, initialMsg: String) {
+    private fun trackTask(taskId: String, initialMsg: String, storagePath: String? = null) {
         scope.launch {
             setTaskStatus(initialMsg, true)
             var attempts = 0
             var lastStatus = ""
-            while (attempts < 90) {
-                delay(2000)
-                attempts++
-                try {
+            try {
+                // Puede permanecer awaiting_user hasta 48 h si el equipo no es Device Owner.
+                while (attempts < 86400) {
+                    delay(2000)
+                    attempts++
                     val response = withContext(Dispatchers.IO) { api.getTask(taskId) }
-                    if (response.isSuccessful) {
-                        val task = response.body()?.task ?: continue
-                        if (task.status != lastStatus) {
-                            lastStatus = task.status
-                            setTaskStatus("Estado: ${task.status}", task.status != "completed" && task.status != "failed")
-                        }
-                        if (task.status == "completed" || task.status == "failed") {
-                            setTaskStatus(if (task.status == "completed") "✔ Completado" else "✘ Falló", false)
-                            tvTaskResult.text = parseResult(task) + if (task.error != null) "\nError: ${task.error}" else ""
-                            if (task.type == "device_info" && task.status == "completed") renderDeviceResources(task.result)
-                            if (task.type == "install" && task.status == "completed") {
-                                delay(1500)
-                                refreshAppsList()
-                            }
-                            return@launch
-                        }
+                    if (!response.isSuccessful) continue
+                    val task = response.body()?.task ?: continue
+                    if (task.status != lastStatus) {
+                        lastStatus = task.status
+                        setTaskStatus("Estado: ${task.status}", task.status != "completed" && task.status != "failed" && task.status != "expired")
                     }
-                } catch (_: Exception) { /* reintentar */ }
+                    val progress = parseInstallProgress(task.result)
+                    if (progress != null) updateInstallProgress(progress.first, progress.second)
+                    if (task.status == "awaiting_user") {
+                        updateInstallProgress(0, "Esperando que aceptes la instalación en la TV (máximo 48 h)")
+                    }
+                    if (task.status == "completed" || task.status == "failed" || task.status == "expired") {
+                        val success = task.status == "completed"
+                        setTaskStatus(if (success) "✔ Completado" else "✘ ${task.status}", false)
+                        tvTaskResult.text = parseResult(task) + if (task.error != null) "\\nError: ${task.error}" else ""
+                        if (success) updateInstallProgress(100, "Instalación enviada correctamente")
+                        else updateInstallProgress(installProgressRing.progress, "La instalación no se completó")
+                        if (task.type == "device_info" && success) renderDeviceResources(task.result)
+                        if (task.type == "install" && success) { delay(1500); refreshAppsList() }
+                        return@launch
+                    }
+                }
+                setTaskStatus("La tarea sigue pendiente. Se conservará el APK temporal hasta que el equipo la resuelva.", false)
+            } finally {
+                if (storagePath != null) {
+                    withContext(Dispatchers.IO) {
+                        runCatching { api.deleteFile(path = storagePath) }
+                    }
+                }
             }
-            setTaskStatus("Tiempo de espera agotado; revisa el estado del equipo", false)
         }
+    }
+
+    private fun parseInstallProgress(raw: String?): Pair<Int, String>? {
+        if (raw.isNullOrBlank() || !raw.trimStart().startsWith("{")) return null
+        return runCatching {
+            val data = JSONObject(raw)
+            val phase = data.optString("phase")
+            val percent = data.optInt("progress", -1)
+            if (percent < 0) null else percent to when (phase) {
+                "download" -> "Descargando APK desde Internet al equipo…"
+                "install" -> "Preparando e instalando APK en el equipo…"
+                "installed" -> "Instalación completada en el equipo"
+                else -> "Procesando APK en el equipo…"
+            }
+        }.getOrNull()
     }
 
     private fun parseResult(task: Task): String {
