@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   if (typeof body.result === 'string' && (status === 'in_progress' || status === 'awaiting_user')) {
     try {
       const progress = JSON.parse(body.result) as { phase?: string };
-      if (progress.phase === 'downloaded') {
+      if (['downloaded', 'install', 'installed'].includes(progress.phase ?? '')) {
         const { data: originalTask } = await ((db.from('tasks') as any) as any)
           .select('payload')
           .eq('id', id)
