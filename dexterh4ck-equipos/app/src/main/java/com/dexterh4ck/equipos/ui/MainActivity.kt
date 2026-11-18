@@ -29,6 +29,7 @@ import com.dexterh4ck.equipos.util.DevicePolicyHelper
 import com.dexterh4ck.equipos.data.AgentAuthClient
 import com.dexterh4ck.equipos.data.WireGuardKeyStore
 import com.dexterh4ck.equipos.vpn.WireGuardTunnelManager
+import com.dexterh4ck.equipos.vpn.VpnHealthServer
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -154,6 +155,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     if (tunnelManager == null) tunnelManager = WireGuardTunnelManager(this@MainActivity)
                     tunnelManager!!.connect(configuration)
+                    VpnHealthServer.start(this@MainActivity, ip)
                 }
                 connectionStatus.text = "WireGuard conectado · $ip"
             } catch (error: Exception) {
