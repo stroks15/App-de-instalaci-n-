@@ -67,6 +67,14 @@
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="Estado: sin iniciar" android:textColor="#57D6A0"
                 android:textSize="13sp" android:layout_marginTop="8dp" />
+            <TextView android:id="@+id/tvRamValue"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="RAM: consultando…" android:textColor="#DCE7F7"
+                android:textSize="14sp" android:layout_marginTop="14dp" />
+            <TextView android:id="@+id/tvStorageValue"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Almacenamiento: consultando…" android:textColor="#DCE7F7"
+                android:textSize="14sp" android:layout_marginTop="6dp" />
         </LinearLayout>
 
         <LinearLayout
