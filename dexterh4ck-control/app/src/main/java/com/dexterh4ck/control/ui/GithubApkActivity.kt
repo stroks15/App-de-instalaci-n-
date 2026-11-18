@@ -22,6 +22,7 @@ import com.dexterh4ck.control.data.Device
 import com.dexterh4ck.control.data.KioskApi
 import com.dexterh4ck.control.data.TaskRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -80,7 +81,7 @@ class GithubApkActivity : AppCompatActivity() {
         }
         repositoryInput = EditText(this).apply {
             hint = "https://github.com/usuario/repositorio"
-            singleLine = true
+            isSingleLine = true
             setText(getPreferences(MODE_PRIVATE).getString("github_repo_url", ""))
             setTextColor(Color.BLACK)
             setPadding(dp(12), dp(10), dp(12), dp(10))
