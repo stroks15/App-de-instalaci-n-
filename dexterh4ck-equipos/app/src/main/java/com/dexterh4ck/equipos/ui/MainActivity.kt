@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
             val result = DevicePolicyHelper.configureDedicatedDevice(this)
             refreshDeviceOwnerStatus()
             AlertDialog.Builder(this).setTitle("Device Owner activo")
-                .setMessage(result + "\\n\\nLa instalación silenciosa está habilitada cuando Android y el fabricante permiten PackageInstaller.")
+                .setMessage(result + "\n\nLa instalación silenciosa está habilitada cuando Android y el fabricante permiten PackageInstaller.")
                 .setPositiveButton("Aceptar", null).show()
             return
         }
@@ -101,8 +101,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Activar Device Owner")
             .setMessage(
                 "Android no permite que una app se otorgue a sí misma el rol Device Owner. " +
-                    "Conecta el TV Box / Fire Stick a una computadora con ADB, instala Dexterh4ck Equipos y ejecuta:\\n\\n" +
-                    command + "\\n\\n" +
+                    "Conecta el TV Box / Fire Stick a una computadora con ADB, instala Dexterh4ck Equipos y ejecuta:\n\n" +
+                    command + "\n\n" +
                     "IMPORTANTE: normalmente sólo se puede activar en un equipo recién restablecido de fábrica, antes de completar el aprovisionamiento y sin cuentas añadidas. " +
                     "Este botón no ejecuta el comando; sólo lo prepara para copiar."
             )
