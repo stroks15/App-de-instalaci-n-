@@ -260,6 +260,7 @@ class DeviceDetailActivity : AppCompatActivity() {
             setTaskStatus(initialMsg, true)
             var attempts = 0
             var lastStatus = ""
+            var cloudCopyDeleted = false
             try {
                 // Puede permanecer awaiting_user hasta 48 h si el equipo no es Device Owner.
                 while (attempts < 86400) {
@@ -273,9 +274,16 @@ class DeviceDetailActivity : AppCompatActivity() {
                         setTaskStatus("Estado: ${task.status}", task.status != "completed" && task.status != "failed" && task.status != "expired")
                     }
                     val progress = parseInstallProgress(task.result)
-                    if (progress != null) updateInstallProgress(progress.first, progress.second)
-                    if (task.status == "awaiting_user") {
-                        updateInstallProgress(0, "Esperando que aceptes la instalación en la TV (máximo 48 h)")
+                    if (progress != null) {
+                        updateInstallProgress(progress.first, progress.second)
+                        if (storagePath != null && !cloudCopyDeleted && progress.second.startsWith("APK descargado en el equipo")) {
+                            val removed = withContext(Dispatchers.IO) { api.deleteFile(path = storagePath) }
+                            cloudCopyDeleted = removed.isSuccessful
+                            if (cloudCopyDeleted) updateInstallProgress(100, "APK guardado en la TV. Copia temporal de la nube eliminada; esperando aceptación.")
+                        }
+                    }
+                    if (task.status == "awaiting_user" && !cloudCopyDeleted) {
+                        updateInstallProgress(installProgressRing.progress, "Esperando aceptación en la TV (máximo 48 h)")
                     }
                     if (task.status == "completed" || task.status == "failed" || task.status == "expired") {
                         val success = task.status == "completed"
@@ -290,8 +298,8 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 setTaskStatus("La tarea sigue pendiente. Se conservará el APK temporal hasta que el equipo la resuelva.", false)
             } finally {
-                if (storagePath != null) {
-                    withContext(Dispatchers.IO) {
+                if (storagePath != null && !cloudCopyDeleted) {
+                    withContext(NonCancellable + Dispatchers.IO) {
                         runCatching { api.deleteFile(path = storagePath) }
                     }
                 }
@@ -307,6 +315,7 @@ class DeviceDetailActivity : AppCompatActivity() {
             val percent = data.optInt("progress", -1)
             if (percent < 0) null else percent to when (phase) {
                 "download" -> "Descargando APK desde Internet al equipo…"
+                "downloaded" -> "APK descargado en el equipo; la copia temporal puede eliminarse."
                 "install" -> "Preparando e instalando APK en el equipo…"
                 "installed" -> "Instalación completada en el equipo"
                 else -> "Procesando APK en el equipo…"
