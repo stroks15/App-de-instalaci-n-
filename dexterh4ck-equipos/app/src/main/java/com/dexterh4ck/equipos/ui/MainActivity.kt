@@ -78,7 +78,8 @@ class MainActivity : AppCompatActivity() {
         val status = findViewById<TextView>(R.id.tvDeviceOwnerStatus)
         val button = findViewById<Button>(R.id.btnDeviceOwner)
         if (DevicePolicyHelper.isDeviceOwner(this)) {
-            status.text = "Device Owner: ACTIVADO · instalaciones silenciosas habilitadas"
+            val policyStatus = DevicePolicyHelper.configureDedicatedDevice(this)
+            status.text = "Device Owner: ACTIVADO · $policyStatus"
             button.text = "Device Owner activo · Ver estado"
         } else {
             status.text = "Device Owner: no activado · requiere configuración inicial por ADB"
