@@ -1,111 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/background">
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="#F3F6FB">
 
-    <!-- Header -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        android:background="@color/primary"
-        android:gravity="center_vertical">
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingStart="22dp" android:paddingEnd="22dp"
+        android:paddingTop="18dp" android:paddingBottom="16dp" android:background="#0862E8">
 
         <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/title_devices"
-            android:textColor="@color/white"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnPair"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Vincular"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/accent"
-            android:minWidth="72dp"
-            android:padding="8dp" />
-
-        <Button
-            android:id="@+id/btnRefresh"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="↻"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/primary_dark"
-            android:textSize="20sp"
-            android:minWidth="48dp"
-            android:padding="8dp" />
-
-        <Button
-            android:id="@+id/btnBulk"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📋"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/accent"
-            android:textSize="16sp"
-            android:minWidth="48dp"
-            android:padding="8dp"
-            android:layout_marginStart="8dp" />
-
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="▣  CONTROL" android:textColor="#FFFFFF"
+            android:textSize="22sp" android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Gestor de Instalación" android:textColor="#DCEAFF"
+            android:textSize="13sp" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Bienvenido a Control"
+            android:textColor="#FFFFFF" android:textSize="25sp" android:textStyle="bold" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Tu centro de instalación y gestión de aplicaciones"
+            android:textColor="#E7F0FF" android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- Contenedor de lista -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="12dp"
+        android:paddingBottom="8dp" android:background="#FFFFFF">
+
+        <Button android:id="@+id/btnPair" android:layout_width="0dp"
+            android:layout_height="48dp" android:layout_weight="1"
+            android:text="＋ Vincular equipo" android:textAllCaps="false"
+            android:textColor="#FFFFFF" android:backgroundTint="#0862E8" />
+        <Button android:id="@+id/btnRefresh" android:layout_width="52dp"
+            android:layout_height="48dp" android:layout_marginStart="8dp"
+            android:text="↻" android:textSize="20sp" android:textColor="#0862E8"
+            android:backgroundTint="#E8F0FE" />
+        <Button android:id="@+id/btnBulk" android:layout_width="52dp"
+            android:layout_height="48dp" android:layout_marginStart="8dp"
+            android:text="☷" android:textSize="18sp" android:textColor="#0862E8"
+            android:backgroundTint="#E8F0FE" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingStart="20dp"
+        android:paddingEnd="20dp" android:paddingTop="14dp" android:paddingBottom="8dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Equipos vinculados" android:textColor="#14243D"
+            android:textSize="19sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Selecciona un dispositivo para instalar apps, ejecutar tareas y administrarlo."
+            android:textColor="#66758B" android:textSize="12sp" />
+    </LinearLayout>
+
+    <FrameLayout android:layout_width="match_parent"
+        android:layout_height="0dp" android:layout_weight="1"
+        android:background="#F3F6FB">
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvDevices"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:padding="8dp" />
+            android:id="@+id/rvDevices" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:clipToPadding="false"
+            android:paddingStart="12dp" android:paddingEnd="12dp"
+            android:paddingTop="6dp" android:paddingBottom="12dp" />
 
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
+        <ProgressBar android:id="@+id/progressBar"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="center" android:visibility="gone" />
+
+        <TextView android:id="@+id/tvEmpty"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_gravity="center" android:gravity="center"
+            android:padding="28dp" android:text="@string/no_devices"
+            android:textColor="#66758B" android:textSize="15sp"
             android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tvEmpty"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="@string/no_devices"
-            android:textColor="@color/gray"
-            android:textSize="18sp"
-            android:visibility="gone" />
-
     </FrameLayout>
 
-    <!-- Footer -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="8dp"
-        android:background="@color/white">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Kiosk Controller v1.0"
-            android:textColor="@color/gray"
-            android:textSize="10sp"
-            android:gravity="center" />
-
-    </LinearLayout>
-
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:padding="10dp" android:gravity="center"
+        android:background="#FFFFFF" android:text="CONTROL  •  Gestión remota de dispositivos"
+        android:textColor="#718096" android:textSize="11sp" />
 </LinearLayout>
