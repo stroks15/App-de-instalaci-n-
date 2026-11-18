@@ -176,4 +176,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("WG_MANAGER_TOKEN is required")
+    # Rebuild owner-isolation rules on every manager start, after wg-quick restores peers.
+    sync_firewall(load_state())
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
