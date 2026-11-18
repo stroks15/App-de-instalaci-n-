@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { requireUser } from '@/lib/request-auth';
@@ -18,7 +17,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     const db = getSupabaseAdmin();
     const limited = await consumePairingAttempt(db, request, [
       `user:${user.id}`,
-      `code:${createHash('sha256').update(code).digest('hex')}`
     ]);
     if (!limited.allowed) {
       if ('unavailable' in limited) return NextResponse.json({ error: 'Protección de emparejamiento no disponible' }, { status: 503 });
