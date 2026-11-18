@@ -46,6 +46,8 @@ class CommandService : Service() {
         private const val TAG = "DexterEquipos"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "dexter_equipos_channel"
+        private const val PENDING_INSTALL_CHANNEL_ID = "dexter_pending_install_channel"
+        private const val PENDING_INSTALL_RETENTION_MS = 48L * 60L * 60L * 1000L
         private const val POLL_INTERVAL = 5_000L
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 60L
@@ -184,6 +186,7 @@ class CommandService : Service() {
             while (isActive) {
                 try {
                     if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
+                    expireOldPendingInstalls()
                     ParentalControlStore.expire(this@CommandService)
                     checkForCommands()
                 } catch (e: Exception) {
@@ -287,13 +290,37 @@ class CommandService : Service() {
 
     private fun pendingInstallNotificationId(taskId: String) = 41000 + (taskId.hashCode() and 0x0fff)
 
+    private fun parseServerExpiry(value: String?): Long {
+        if (value.isNullOrBlank()) return 0L
+        val formats = listOf("yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssX")
+        for (pattern in formats) {
+            try {
+                val parser = SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+                parser.parse(value)?.time?.let { return it }
+            } catch (_: Exception) { }
+        }
+        return 0L
+    }
+
     private suspend fun queueInstallForUserAcceptance(task: Task) {
         val prefs = pendingInstallPrefs()
         val key = "task_${task.id}"
         val existingExpiry = prefs.getLong("${key}_expires", 0L)
-        val expiresAt = if (existingExpiry > 0L) existingExpiry else System.currentTimeMillis() + 48L * 60L * 60L * 1000L
+        val serverExpiry = parseServerExpiry(task.expires_at)
+        val expiresAt = when {
+            existingExpiry > 0L -> existingExpiry
+            serverExpiry > 0L -> serverExpiry
+            else -> System.currentTimeMillis() + PENDING_INSTALL_RETENTION_MS
+        }
+        if (expiresAt <= System.currentTimeMillis()) {
+            expirePendingInstall(task.id)
+            return
+        }
+        val alreadyQueued = existingExpiry > 0L && !prefs.getString("${key}_url", null).isNullOrBlank()
         prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
-        reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence en 48 horas.")
+        if (!alreadyQueued) {
+            reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
+        }
         showPendingInstallNotification(task.id, task.payload, expiresAt)
     }
 
@@ -312,7 +339,7 @@ class CommandService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val remainingHours = ((expiresAt - System.currentTimeMillis()).coerceAtLeast(0L) / 3600000L)
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, PENDING_INSTALL_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Instalación pendiente de autorización")
             .setContentText("Acepta instalar la aplicación. Caduca en $remainingHours h.")
@@ -754,6 +781,16 @@ class CommandService : Service() {
             ).apply { description = "Servicio de gestión remota" }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+            val pendingChannel = NotificationChannel(
+                PENDING_INSTALL_CHANNEL_ID,
+                "Instalaciones pendientes",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Solicitudes de instalación que requieren aceptación local"
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(pendingChannel)
         }
     }
 }
