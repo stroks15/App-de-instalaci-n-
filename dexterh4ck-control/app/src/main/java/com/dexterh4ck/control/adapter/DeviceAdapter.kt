@@ -42,7 +42,10 @@ class DeviceAdapter(
     override fun onBindViewHolder(holder: DeviceViewHolder, position: Int) {
         val device = devices[position]
         holder.tvName.text = device.name
-        holder.tvId.text = "ID: ${device.device_id.take(12)}"
+        val vpnIp = device.assigned_ip?.substringBefore("/")
+        holder.tvId.text = "ID: ${device.device_id.take(12)}" + (vpnIp?.let { " · VPN $it" } ?: "")
+        holder.reconnect.isEnabled = device.vpn_enabled && !vpnIp.isNullOrBlank()
+        holder.reconnect.alpha = if (holder.reconnect.isEnabled) 1f else 0.45f
         holder.reconnect.setOnClickListener {
             val current = holder.bindingAdapterPosition
             if (current != RecyclerView.NO_POSITION && current in devices.indices) onReconnect(devices[current])
