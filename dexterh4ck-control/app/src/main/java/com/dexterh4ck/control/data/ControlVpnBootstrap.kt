@@ -49,6 +49,11 @@ object ControlVpnBootstrap {
         return result
     }
 
+    fun reconnect(context: Context) {
+        ControlWireGuardTunnel.disconnect()
+        connect(context)
+    }
+
     fun connect(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val ip = prefs.getString("assigned_vpn_ip", null)?.substringBefore('/').orEmpty()
