@@ -15,6 +15,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backend-typecheck:
+    name: Type-check KioskGrid backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: kioskgrid-backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: kioskgrid-backend/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci
+      - name: Type-check backend routes and libraries
+        run: npx tsc --noEmit
+
   build:
     name: Build, sign and validate both Android apps
     runs-on: ubuntu-latest
