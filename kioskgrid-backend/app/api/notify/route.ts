@@ -27,7 +27,6 @@ export async function POST(request: NextRequest) {
     if (!title || !message) return NextResponse.json({ error: 'title y body son requeridos' }, { status: 400 });
     const deviceIds = await resolveDeviceIds(body, auth.user.id);
     if (!deviceIds.length) return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
-
     const db = getSupabaseAdmin();
     const now = new Date().toISOString();
     const payload = JSON.stringify({ title, body: message });
@@ -37,9 +36,6 @@ export async function POST(request: NextRequest) {
     }));
     const { error } = await (db.from('tasks') as any).insert(rows);
     if (error) throw error;
-    await (db.from('notifications') as any).insert(deviceIds.map((deviceId: string) => ({
-      device_id: deviceId, owner_id: auth.user!.id, title, body: message, status: 'sent', created_at: now
-    })));
     return NextResponse.json({ sent: deviceIds.length, title, body: message }, { status: 201 });
   } catch (error: any) {
     const message = error?.message || 'No se pudo enviar la notificación';
@@ -56,8 +52,8 @@ export async function GET(request: NextRequest) {
   if (deviceError) return NextResponse.json({ error: 'No se pudieron consultar los equipos' }, { status: 500 });
   const ids = (devices ?? []).map((d: any) => d.id);
   if (!ids.length) return NextResponse.json({ notifications: [] });
-  const { data, error } = await (db.from('notifications') as any).select('*').in('device_id', ids)
-    .order('created_at', { ascending: false }).limit(limit);
+  const { data, error } = await (db.from('tasks') as any).select('id,device_id,payload,status,created_at,updated_at,error')
+    .eq('type', 'notify').in('device_id', ids).order('created_at', { ascending: false }).limit(limit);
   if (error) return NextResponse.json({ error: 'No se pudo consultar el historial' }, { status: 500 });
   return NextResponse.json({ notifications: data ?? [] });
 }
