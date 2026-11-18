@@ -7,7 +7,8 @@ export async function GET(request:NextRequest){
  const deviceRef=new URL(request.url).searchParams.get('deviceId');
  if(!deviceRef)return NextResponse.json({error:'deviceId es requerido'},{status:400});
  const db=getSupabaseAdmin(),{data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
- const device=(owned??[]).find((d: any)=>d.id===deviceRef||d.device_id===deviceRef);
+ const ownedDevices = (owned ?? []) as Array<{ id: string; device_id: string }>;
+ const device=ownedDevices.find(d=>d.id===deviceRef||d.device_id===deviceRef);
  if(!device)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
  const {data,error}=await (db.from('tasks') as any).select('id,result,updated_at').eq('device_id',device.id).eq('type','list_apps').eq('status','done').order('created_at',{ascending:false}).limit(1);
  if(error)return NextResponse.json({error:'No se pudieron consultar las aplicaciones'},{status:500});
