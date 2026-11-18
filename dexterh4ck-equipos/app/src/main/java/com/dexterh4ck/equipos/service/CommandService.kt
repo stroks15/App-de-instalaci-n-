@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Servicio en segundo plano de Dexterh4ck Equipos.
  *
- * Hace polling al backend cada 5 segundos buscando tareas pendientes
+ * Mantiene un servicio foreground persistente, renueva el registro cada 30 segundos y consulta tareas cada 5 segundos
  * (install, uninstall, launch, list_apps, device_info, reboot, pin_app),
  * las ejecuta en el dispositivo y reporta el resultado.
  */
@@ -185,7 +185,7 @@ class CommandService : Service() {
         scope.launch {
             while (isActive) {
                 try {
-                    if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
+                    if (System.currentTimeMillis() - lastRegistrationAt >= 30_000L) registerDevice()
                     expireOldPendingInstalls()
                     ParentalControlStore.expire(this@CommandService)
                     checkForCommands()
