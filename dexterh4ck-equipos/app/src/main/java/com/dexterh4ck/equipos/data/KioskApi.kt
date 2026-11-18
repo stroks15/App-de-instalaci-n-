@@ -27,14 +27,11 @@ interface KioskApi {
     @PATCH("api/agent/tasks")
     suspend fun updateTask(@Body update: TaskUpdate): Response<Map<String, Task>>
 
-    /**
-     * Registra/actualiza este dispositivo en la tabla devices
-     * para que aparezca en Dexterh4ck Control.
-     */
-    @POST("api/agent/register")
-    suspend fun registerDevice(
-        @Body device: DeviceRegistration
-    ): Response<AgentRegistrationResponse>
+    /** Heartbeat authenticated with the device credential issued after Supabase login. */
+    @POST("api/agent/heartbeat")
+    suspend fun heartbeat(
+        @Body heartbeat: DeviceHeartbeat
+    ): Response<Map<String, Any>>
 
     /**
      * Actualiza campos del dispositivo (ej: kiosk_enabled).
