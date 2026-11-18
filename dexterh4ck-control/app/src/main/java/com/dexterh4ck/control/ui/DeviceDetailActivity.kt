@@ -7,6 +7,9 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.AdapterView
 import android.text.InputType
 import android.graphics.Color
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +55,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     private lateinit var rvInstalledApps: RecyclerView
     private lateinit var tvNoApps: TextView
     private var appsAdapter: InstalledAppAdapter? = null
+    private var selectedPackages: Set<String> = emptySet()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val apkPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -112,6 +116,22 @@ class DeviceDetailActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnRefreshApps).setOnClickListener { refreshAppsList() }
         findViewById<Button>(R.id.btnDeviceInfo).setOnClickListener { sendTask("device_info", "") }
         findViewById<Button>(R.id.btnAdbCommand).setOnClickListener { showAdbCommandDialog() }
+        findViewById<EditText>(R.id.etAppSearch).addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = filterApps()
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        findViewById<Spinner>(R.id.spAppFilter).onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = filterApps()
+        }
+        findViewById<Button>(R.id.btnDebloatSelected).setOnClickListener {
+            val packages = appsAdapter?.selectedPackages().orEmpty()
+            if (packages.isNotEmpty()) confirmAction("¿Desinstalar ${packages.size} aplicaciones seleccionadas?") {
+                packages.forEach { sendTask("uninstall", it) }
+                appsAdapter?.clearSelection()
+            }
+        }
         findViewById<Button>(R.id.btnSetDeviceOwner).setOnClickListener {
             confirmAction("Enviar la orden Device Owner al agente. Requiere root/su y que Android permita el aprovisionamiento inicial.") {
                 sendTask("adb_command", "dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver")
@@ -467,7 +487,8 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
         tvNoApps.visibility = View.GONE
         val sorted = apps.sortedBy { it.appName.lowercase() }
-        appsAdapter = InstalledAppAdapter(sorted,
+        appsAdapter = InstalledAppAdapter(
+            sorted,
             onOpenClick = { app -> sendTask("launch", app.packageName) },
             onUninstallClick = { app ->
                 confirmAction("¿Desinstalar ${app.appName} de $deviceName?") {
@@ -478,10 +499,26 @@ class DeviceDetailActivity : AppCompatActivity() {
                 sendTask("pin_app", app.packageName)
                 toast("Intentando fijar ${app.appName} en el launcher del equipo")
             },
-            onParentalClick = { app -> showParentalDialog(app) }
+            onParentalClick = { app -> showParentalDialog(app) },
+            onSelectionChanged = { packages ->
+                selectedPackages = packages
+                updateDebloatButton()
+            }
         )
         rvInstalledApps.adapter = appsAdapter
-        appsAdapter?.updateApps(sorted)
+        filterApps()
+    }
+
+    private fun filterApps() {
+        val query = findViewById<EditText>(R.id.etAppSearch).text.toString()
+        val filter = findViewById<Spinner>(R.id.spAppFilter).selectedItem?.toString() ?: "ALL"
+        appsAdapter?.filter(query, filter)
+    }
+
+    private fun updateDebloatButton() {
+        val button = findViewById<Button>(R.id.btnDebloatSelected)
+        button.text = "DEBLOAT · ${selectedPackages.size} seleccionadas"
+        button.isEnabled = selectedPackages.isNotEmpty()
     }
 
     private fun showParentalDialog(app: InstalledApp) {
