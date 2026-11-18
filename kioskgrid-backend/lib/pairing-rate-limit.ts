@@ -6,7 +6,7 @@ type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
 export async function consumePairingAttempt(db: SupabaseAdmin, request: NextRequest, identifiers: string[]) {
   const forwarded = request.headers.get('x-forwarded-for');
-  const ip = request.headers.get('x-real-ip') || forwarded?.split(',').at(-1)?.trim() || 'unknown';
+  const ip = request.headers.get('x-real-ip') || forwarded?.split(',').pop()?.trim() || 'unknown';
   const scopes = [...new Set([`ip:${ip}`, ...identifiers])];
   let retryAfterSeconds = 0;
   for (const scope of scopes) {
