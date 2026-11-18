@@ -95,7 +95,11 @@ class DeviceListActivity : AppCompatActivity() {
 
     private fun showActionsMenu(anchor: View) {
         PopupMenu(this, anchor).apply {
-            menu.add("Herramientas avanzadas · NetBird/ADB").setOnMenuItemClickListener {\n                startActivity(Intent(this@DeviceListActivity, NetBirdToolsActivity::class.java)); true\n            }\n            menu.add("Actualizar lista").setOnMenuItemClickListener { loadDevices(); true }
+            menu.add("Herramientas avanzadas · NetBird/ADB").setOnMenuItemClickListener {
+                startActivity(Intent(this@DeviceListActivity, NetBirdToolsActivity::class.java))
+                true
+            }
+            menu.add("Actualizar lista").setOnMenuItemClickListener { loadDevices(); true }
             menu.add("Gestión masiva").setOnMenuItemClickListener {
                 startActivity(Intent(this@DeviceListActivity, BulkManagementActivity::class.java)); true
             }
