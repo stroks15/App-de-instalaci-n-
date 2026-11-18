@@ -73,16 +73,29 @@ class DeviceListActivity : AppCompatActivity() {
     }
 
     private fun showPairDialog() {
-        val input = EditText(this).apply { hint = "Código de 5 caracteres"; filters = arrayOf(android.text.InputFilter.LengthFilter(5)); isSingleLine = true }
+        val input = EditText(this).apply {
+            hint = "Ej. A7K9P2QX"
+            filters = arrayOf(android.text.InputFilter.LengthFilter(8))
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
         AlertDialog.Builder(this).setTitle("Vincular equipo").setMessage("Escribe el código que aparece en Dexterh4ck Equipos.").setView(input)
             .setNegativeButton("Cancelar", null).setPositiveButton("Vincular") { _, _ ->
                 val code = input.text.toString().trim().uppercase()
-                if (code.length != 5) { Toast.makeText(this, "El código debe tener 5 caracteres", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                if (!code.matches(Regex("^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$"))) {
+                    Toast.makeText(this, "Ingresa los 8 caracteres del código (letras y números).", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
                 lifecycleScope.launch {
                     try {
                         val response = withContext(Dispatchers.IO) { api.pairDevice(PairDeviceRequest(code)) }
                         if (response.isSuccessful) { Toast.makeText(this@DeviceListActivity, "Equipo vinculado correctamente", Toast.LENGTH_SHORT).show(); loadDevices() }
-                        else Toast.makeText(this@DeviceListActivity, "No se pudo vincular: HTTP ${response.code()}", Toast.LENGTH_LONG).show()
+                        else {
+                            val detail = response.errorBody()?.string()?.take(180).orEmpty()
+                            Toast.makeText(this@DeviceListActivity, "No se pudo vincular (HTTP ${response.code()}): $detail", Toast.LENGTH_LONG).show()
+                        }
                     } catch (e: Exception) { Toast.makeText(this@DeviceListActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
                 }
             }.show()
