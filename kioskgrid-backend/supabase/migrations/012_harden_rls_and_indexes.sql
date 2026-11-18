@@ -3,6 +3,14 @@
 
 begin;
 
+alter function public.grant_permanent_access(text) set search_path = pg_catalog, public;
+alter function public.has_permanent_access(text) set search_path = pg_catalog, public;
+revoke all on function public.grant_permanent_access(text) from public, anon, authenticated;
+revoke all on function public.has_permanent_access(text) from public, anon, authenticated;
+grant execute on function public.grant_permanent_access(text) to service_role;
+grant execute on function public.has_permanent_access(text) to service_role;
+
+
 drop policy if exists "Usuarios pueden ver sus propios dispositivos" on public.devices;
 drop policy if exists "Usuarios pueden ver tareas de sus dispositivos" on public.tasks;
 
