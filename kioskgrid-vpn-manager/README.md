@@ -21,8 +21,7 @@ Address = 10.88.0.1/16
 ListenPort = 51820
 PrivateKey = REPLACE_WITH_GATEWAY_PRIVATE_KEY
 SaveConfig = true
-PostUp = sysctl -w net.ipv4.ip_forward=1; iptables -A FORWARD -i wg0 -o wg0 -j ACCEPT
-PostDown = iptables -D FORWARD -i wg0 -o wg0 -j ACCEPT
+PostUp = sysctl -w net.ipv4.ip_forward=1
 ```
 
 Enable forwarding persistently with `net.ipv4.ip_forward=1` in sysctl. The gateway must
