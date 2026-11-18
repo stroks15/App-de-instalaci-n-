@@ -97,6 +97,12 @@ class CommandService : Service() {
             val taskId = intent.getStringExtra(PendingInstallActionReceiver.EXTRA_TASK_ID)
             if (!taskId.isNullOrBlank()) scope.launch { acceptPendingInstall(taskId) }
         }
+        if (intent?.action == ACTION_INSTALL_RESULT) {
+            val taskId = intent.getStringExtra(EXTRA_INSTALL_TASK_ID)
+            val state = intent.getStringExtra(EXTRA_INSTALL_STATE)
+            val message = intent.getStringExtra(EXTRA_INSTALL_MESSAGE).orEmpty()
+            if (!taskId.isNullOrBlank()) scope.launch { handleInstallResult(taskId, state, message) }
+        }
         return START_STICKY
     }
 
@@ -281,9 +287,42 @@ class CommandService : Service() {
             else -> ("null" to "Tipo de tarea desconocido: ${task.type}")
         }
 
-        val finalStatus = if (errorMsg != null) "failed" else "completed"
-        reportTask(task.id, finalStatus, result = resultJson, error = errorMsg)
+        val finalStatus = when {
+            errorMsg != null -> "failed"
+            task.type == "install" -> "in_progress" // El estado terminal llega desde InstallResultReceiver.
+            else -> "completed"
+        }
+        val finalResult = if (task.type == "install" && errorMsg == null) {
+            JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", "APK transferido a PackageInstaller; esperando confirmación del sistema.")
+            }.toString()
+        } else resultJson
+        reportTask(task.id, finalStatus, result = finalResult, error = errorMsg)
         updateNotification(finalStatus, task.type)
+    }
+
+    private suspend fun handleInstallResult(taskId: String, state: String?, message: String) {
+        when (state) {
+            "success" -> {
+                reportTask(taskId, "completed", result = JSONObject().apply {
+                    put("phase", "installed")
+                    put("progress", 100)
+                    put("message", message.ifBlank { "Instalación completada en el equipo." })
+                }.toString())
+                updateNotification("completed", "install")
+            }
+            "pending" -> reportTask(taskId, "in_progress", result = JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", message.ifBlank { "Esperando confirmación de Android en la pantalla del equipo." })
+            }.toString())
+            else -> {
+                reportTask(taskId, "failed", error = message.ifBlank { "Android no pudo completar la instalación." })
+                updateNotification("failed", "install")
+            }
+        }
     }
 
     private fun pendingInstallPrefs() = getSharedPreferences("pending_user_installs", Context.MODE_PRIVATE)
@@ -388,7 +427,11 @@ class CommandService : Service() {
         reportTask(taskId, "in_progress")
         try {
             val result = installApkFile(taskId, apkFile)
-            reportTask(taskId, "completed", result = "\"\${escapeJson(result)}\"")
+            reportTask(taskId, "in_progress", result = JSONObject().apply {
+                put("phase", "install")
+                put("progress", 99)
+                put("message", result)
+            }.toString())
             updateNotification("completed", "install")
         } catch (e: Exception) {
             reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
