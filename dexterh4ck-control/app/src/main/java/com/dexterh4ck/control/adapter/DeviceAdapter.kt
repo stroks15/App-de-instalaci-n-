@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Button
 import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.data.Device
@@ -11,7 +12,8 @@ import com.dexterh4ck.control.data.Device
 /** Adapter para mostrar la lista de dispositivos en el RecyclerView. */
 class DeviceAdapter(
     private var devices: List<Device>,
-    private val onItemClick: (Device) -> Unit
+    private val onItemClick: (Device) -> Unit,
+    private val onReconnect: (Device) -> Unit
 ) : RecyclerView.Adapter<DeviceAdapter.DeviceViewHolder>() {
 
     inner class DeviceViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -19,6 +21,7 @@ class DeviceAdapter(
         val tvId: TextView = view.findViewById(R.id.tvDeviceId)
         val tvStatus: TextView = view.findViewById(R.id.tvDeviceStatus)
         val statusIndicator: View = view.findViewById(R.id.viewStatusIndicator)
+        val reconnect: Button = view.findViewById(R.id.btnReconnect)
 
         init {
             view.setOnClickListener {
@@ -40,6 +43,10 @@ class DeviceAdapter(
         val device = devices[position]
         holder.tvName.text = device.name
         holder.tvId.text = "ID: ${device.device_id.take(12)}"
+        holder.reconnect.setOnClickListener {
+            val current = holder.bindingAdapterPosition
+            if (current != RecyclerView.NO_POSITION && current in devices.indices) onReconnect(devices[current])
+        }
 
         val statusText = when (device.status) {
             "online" -> "Online"
