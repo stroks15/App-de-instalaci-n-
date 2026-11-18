@@ -700,6 +700,10 @@ class CommandService : Service() {
         val command = payload.trim().removePrefix("adb shell ").trim()
         require(command.isNotBlank() && command.length <= 256) { "Comando vacío o demasiado largo." }
         // This is a constrained local root-shell bridge, not a remote adbd session.
+        if (command == "dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver" &&
+            DevicePolicyHelper.isDeviceOwner(this)) {
+            return "Device Owner ya está activo en este equipo."
+        }
         val allowedExact = setOf(
             "getprop", "df -h", "free -h", "dumpsys battery",
             "dumpsys meminfo", "pm list packages", "wm size", "wm density",
