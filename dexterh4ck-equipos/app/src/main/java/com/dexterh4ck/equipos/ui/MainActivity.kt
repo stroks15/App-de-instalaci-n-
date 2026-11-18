@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun optimizeMemory() {
         // Android does not allow third-party apps to clear another app's private cache.
-        trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+        onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
         Runtime.getRuntime().gc()
         refreshResourceStats()
         Toast.makeText(this, "KioskGrid optimizó su propio proceso. Android administra la RAM de las demás apps.", Toast.LENGTH_LONG).show()
