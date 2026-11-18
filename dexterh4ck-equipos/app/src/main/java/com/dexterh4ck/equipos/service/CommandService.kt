@@ -155,7 +155,10 @@ class CommandService : Service() {
         lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
-                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val now = timestampFormat.format(Date())
                 val device = DeviceRegistration(
                     device_id = config.deviceId,
                     hardware_id = config.deviceId,
