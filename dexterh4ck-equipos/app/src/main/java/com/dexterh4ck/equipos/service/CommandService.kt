@@ -259,6 +259,10 @@ class CommandService : Service() {
                 { it to null },
                 { "null" to it.message }
             )
+            "adb_command" -> runCatching { runAdbDiagnostic(task.payload) }.fold(
+                { "\"\${escapeJson(it)}\"" to null },
+                { "null" to it.message }
+            )
             "reboot" -> runCatching { rebootDevice() }.fold(
                 { "\"${escapeJson(it)}\"" to null },
                 { "null" to it.message }
@@ -384,6 +388,28 @@ class CommandService : Service() {
         }.sortedBy { (it["appName"] as String).lowercase() }
 
         return apps.toJsonArray()
+    }
+
+
+    /** Ejecuta sólo diagnósticos ADB predefinidos y únicamente si el equipo ofrece su binario su. */
+    private fun runAdbDiagnostic(payload: String): String {
+        val command = payload.trim()
+        val allowed = setOf(
+            "getprop", "df -h", "free -h", "dumpsys battery",
+            "dumpsys meminfo", "pm list packages", "wm size", "wm density",
+            "settings get global airplane_mode_on", "settings get global stay_on_while_plugged_in"
+        )
+        require(command in allowed) { "Comando no permitido. Usa uno de los diagnósticos disponibles." }
+        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+        if (!process.waitFor(15, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw IllegalStateException("El comando excedió 15 segundos")
+        }
+        val output = process.inputStream.bufferedReader().use { it.readText() }.take(8000)
+        if (process.exitValue() != 0) {
+            throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su." })
+        }
+        return output.ifBlank { "Comando ejecutado sin salida." }
     }
 
     // ====================== INFO DEL EQUIPO ======================
