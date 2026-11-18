@@ -161,6 +161,7 @@ class BulkManagementActivity : AppCompatActivity() {
 
                 val downloaded = mutableSetOf<String>()
                 val terminal = mutableSetOf<String>()
+                val progressByTask = mutableMapOf<String, Int>()
                 var attempts = 0
                 while (terminal.size < taskIds.size && attempts < 86400) {
                     attempts++
@@ -173,8 +174,10 @@ class BulkManagementActivity : AppCompatActivity() {
                                 val json = JSONObject(task.result ?: "{}")
                                 json.optInt("progress", 0) to json.optString("phase")
                             }.getOrDefault(0 to "")
+                            progressByTask[taskId] = info.first.coerceIn(0, 100)
                             if (info.second == "downloaded" || task.status in listOf("completed", "failed", "expired")) {
                                 downloaded.add(taskId)
+                                progressByTask[taskId] = 100
                             }
                             if (task.status in listOf("completed", "failed", "expired")) terminal.add(taskId)
                         } catch (_: Exception) { }
@@ -183,7 +186,7 @@ class BulkManagementActivity : AppCompatActivity() {
                         val removed = withContext(Dispatchers.IO) { api.deleteFile(path = cloudPath!!) }
                         cloudDeleted = removed.isSuccessful
                     }
-                    val aggregate = if (taskIds.isEmpty()) 0 else (downloaded.size * 100 / taskIds.size)
+                    val aggregate = if (taskIds.isEmpty()) 0 else (taskIds.sumOf { progressByTask[it] ?: 0 } / taskIds.size)
                     val label = if (downloaded.size == taskIds.size)
                         "Todos los equipos descargaron el APK. La copia temporal en nube se elimina; esperando resultado de instalación…"
                     else "Descarga en equipos: ${downloaded.size}/${taskIds.size}. Enviado a ${taskIds.size} equipo(s)."
