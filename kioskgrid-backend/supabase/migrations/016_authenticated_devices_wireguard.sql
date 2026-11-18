@@ -80,7 +80,8 @@ BEGIN
   FOR UPDATE;
 
   IF FOUND THEN
-    IF v_existing.owner_id IS NOT NULL AND v_existing.owner_id <> p_user_id THEN
+    IF COALESCE(v_existing.owner_id, v_existing.user_id) IS NOT NULL
+       AND COALESCE(v_existing.owner_id, v_existing.user_id) <> p_user_id THEN
       RAISE EXCEPTION 'device_already_owned';
     END IF;
     v_ip := COALESCE(v_existing.assigned_ip,
