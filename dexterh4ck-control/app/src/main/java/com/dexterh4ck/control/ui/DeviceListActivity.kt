@@ -26,6 +26,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.nio.charset.StandardCharsets
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -107,6 +112,9 @@ class DeviceListActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     ControlVpnBootstrap.reconnect(this@DeviceListActivity)
                 }
+                val vpnIp = device.assigned_ip?.substringBefore('/')
+                    ?: throw IllegalStateException("El equipo todavía no tiene una IP VPN asignada.")
+                withContext(Dispatchers.IO) { checkVpnHealth(vpnIp) }
                 val response = withContext(Dispatchers.IO) {
                     api.getDeviceDetail(device.device_id)
                 }
@@ -133,6 +141,19 @@ class DeviceListActivity : AppCompatActivity() {
                     "No se pudo reconectar: ${error.localizedMessage}",
                     Toast.LENGTH_LONG
                 ).show()
+            }
+        }
+    }
+
+    private fun checkVpnHealth(ip: String) {
+        Socket().use { socket ->
+            socket.connect(InetSocketAddress(ip, 8787), 3500)
+            socket.soTimeout = 3500
+            val request = "GET /health HTTP/1.1\r\nHost: $ip\r\nConnection: close\r\n\r\n"
+            socket.getOutputStream().write(request.toByteArray(StandardCharsets.US_ASCII))
+            val statusLine = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII)).readLine().orEmpty()
+            if (!statusLine.contains("200")) {
+                throw IllegalStateException("El endpoint VPN del equipo no respondió correctamente.")
             }
         }
     }
