@@ -32,10 +32,15 @@ class InstalledAppAdapter(
         val btnParental: ImageButton = view.findViewById(R.id.btnParentalApp)
 
         init {
-            btnOpen.setOnClickListener { onOpenClick(apps[bindingAdapterPosition]) }
-            btnUninstall.setOnClickListener { onUninstallClick(apps[bindingAdapterPosition]) }
-            btnPin.setOnClickListener { onPinClick(apps[bindingAdapterPosition]) }
-            btnParental.setOnClickListener { onParentalClick(apps[bindingAdapterPosition]) }
+            btnOpen.setOnClickListener { currentApp()?.let(onOpenClick) }
+            btnUninstall.setOnClickListener { currentApp()?.let(onUninstallClick) }
+            btnPin.setOnClickListener { currentApp()?.let(onPinClick) }
+            btnParental.setOnClickListener { currentApp()?.let(onParentalClick) }
+        }
+
+        private fun currentApp(): InstalledApp? {
+            val position = bindingAdapterPosition
+            return if (position != RecyclerView.NO_POSITION && position in apps.indices) apps[position] else null
         }
     }
 
