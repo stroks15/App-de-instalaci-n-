@@ -1,5 +1,10 @@
 package com.dexterh4ck.equipos.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -14,7 +19,6 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.dexterh4ck.equipos.R
 import com.dexterh4ck.equipos.data.AgentConfig
 import com.dexterh4ck.equipos.service.CommandService
@@ -24,6 +28,8 @@ import com.dexterh4ck.equipos.util.DevicePolicyHelper
 
 /** Panel compacto y navegable con mando para Android TV / Fire TV. */
 class MainActivity : AppCompatActivity() {
+    companion object { private const val REQUEST_POST_NOTIFICATIONS = 7001 }
+
     private lateinit var serverUrl: EditText
     private lateinit var deviceName: EditText
     private lateinit var pairingCode: TextView
@@ -33,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        requestNotificationPermissionIfNeeded()
         serverUrl = findViewById(R.id.etServerUrl)
         deviceName = findViewById(R.id.etDeviceName)
         pairingCode = findViewById(R.id.tvPairingCode)
@@ -61,6 +68,18 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnAdbSettings).setOnClickListener {
             try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
             catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_POST_NOTIFICATIONS
+            )
         }
     }
 
