@@ -12,6 +12,14 @@
     android:foreground="?attr/selectableItemBackground"
     android:gravity="center_vertical">
 
+    <CheckBox
+        android:id="@+id/cbSelectApp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:buttonTint="@color/accent"
+        android:contentDescription="Seleccionar aplicación" />
+
     <!-- Icono de la app -->
     <ImageView
         android:id="@+id/ivAppIcon"
