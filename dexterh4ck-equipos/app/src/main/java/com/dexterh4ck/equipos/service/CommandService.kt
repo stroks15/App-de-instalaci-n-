@@ -16,6 +16,7 @@ import com.dexterh4ck.equipos.data.*
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
 import com.dexterh4ck.equipos.data.WireGuardKeyStore
 import com.dexterh4ck.equipos.vpn.WireGuardTunnelManager
+import com.dexterh4ck.equipos.vpn.VpnHealthServer
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
@@ -121,6 +122,7 @@ class CommandService : Service() {
     override fun onDestroy() {
         runCatching { if (agentWakeLock?.isHeld == true) agentWakeLock?.release() }
         agentWakeLock = null
+        VpnHealthServer.stop()
         scope.cancel()
         super.onDestroy()
     }
@@ -191,6 +193,7 @@ class CommandService : Service() {
                 """.trimIndent()
                 vpnTunnelManager = WireGuardTunnelManager(this@CommandService)
                 vpnTunnelManager!!.connect(wireGuardConfig)
+                VpnHealthServer.start(this@CommandService, ip)
                 Log.i(TAG, "WireGuard tunnel restored for $ip")
             }.onFailure {
                 Log.e(TAG, "WireGuard restore failed: ${it.message}")
