@@ -577,7 +577,7 @@ class CommandService : Service() {
             val minutes = data?.optInt("durationMinutes", 60) ?: 60
             ParentalControlStore.block(this, packageName, pin, minutes)
         } else {
-            val pin = data?.optString("pin", "") ?: ""
+            val pin = data?.optString("pinHash", "") ?: ""
             ParentalControlStore.unblock(this, packageName, pin)
         }
     }
