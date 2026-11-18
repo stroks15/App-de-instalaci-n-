@@ -17,6 +17,7 @@ import com.dexterh4ck.equipos.util.PairingCode
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
+import com.dexterh4ck.equipos.util.ParentalControlStore
 import org.json.JSONObject
 import kotlinx.coroutines.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -179,6 +180,7 @@ class CommandService : Service() {
             while (isActive) {
                 try {
                     if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
+                    ParentalControlStore.expire(this@CommandService)
                     checkForCommands()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error polling: ${e.message}")
@@ -540,7 +542,14 @@ class CommandService : Service() {
             ?: data?.optString("package")?.takeIf { it.isNotBlank() }
             ?: payload.trim()
         require(packageName.isNotBlank()) { "Nombre de paquete vacío" }
-        return DevicePolicyHelper.setAppHidden(this, packageName, blocked)
+        return if (blocked) {
+            val pin = data?.optString("pin", "") ?: ""
+            val minutes = data?.optInt("durationMinutes", 60) ?: 60
+            ParentalControlStore.block(this, packageName, pin, minutes)
+        } else {
+            val pin = data?.optString("pin", "") ?: ""
+            ParentalControlStore.unblock(this, packageName, pin)
+        }
     }
 
     private fun getUsageReport(payload: String): String {
