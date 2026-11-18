@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
                 clipboard.setPrimaryClip(ClipData.newPlainText("Comando Device Owner", command))
                 Toast.makeText(this, "Comando ADB copiado", Toast.LENGTH_LONG).show()
             }
-            .setPositiveButton("Abrir guía ADB") { _, _ ->
+            .setPositiveButton("Abrir ajustes ADB") { _, _ ->
                 try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
                 catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
             }
