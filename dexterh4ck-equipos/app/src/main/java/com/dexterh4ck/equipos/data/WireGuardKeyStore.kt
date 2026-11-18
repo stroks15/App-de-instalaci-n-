@@ -27,8 +27,10 @@ object WireGuardKeyStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val encrypted = prefs.getString(PRIVATE_KEY, null)
         if (!encrypted.isNullOrBlank()) {
-            val encoded = decrypt(context, encrypted)
-            return KeyPair(Key.fromBase64(encoded))
+            val restored = runCatching { KeyPair(Key.fromBase64(decrypt(context, encrypted))) }.getOrNull()
+            if (restored != null) return restored
+            // Backup may contain ciphertext but not the device-bound Keystore key.
+            prefs.edit().remove(PRIVATE_KEY).commit()
         }
         val pair = KeyPair()
         val encoded = pair.privateKey.toBase64()
