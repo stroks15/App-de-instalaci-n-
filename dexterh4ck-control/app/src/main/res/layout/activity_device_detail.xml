@@ -179,6 +179,27 @@
             android:layout_marginBottom="8dp" />
 
         <Button
+            android:id="@+id/btnDeviceInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Consultar RAM y almacenamiento"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/accent"
+            android:padding="14dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvDeviceResources"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RAM y almacenamiento: sin consultar"
+            android:textColor="@color/black"
+            android:textSize="13sp"
+            android:padding="12dp"
+            android:background="@color/white"
+            android:layout_marginBottom="8dp" />
+
+        <Button
             android:id="@+id/btnReboot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
