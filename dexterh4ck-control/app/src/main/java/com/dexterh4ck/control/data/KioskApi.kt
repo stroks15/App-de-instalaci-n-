@@ -28,6 +28,9 @@ interface KioskApi {
     @DELETE("api/devices/{deviceId}")
     suspend fun deleteDevice(@Path("deviceId") deviceId: String): Response<Map<String, String>>
 
+    @POST("api/devices/pair")
+    suspend fun pairDevice(@Body request: PairDeviceRequest): Response<PairDeviceResponse>
+
     // ---------- Tareas ----------
 
     @GET("api/tasks")

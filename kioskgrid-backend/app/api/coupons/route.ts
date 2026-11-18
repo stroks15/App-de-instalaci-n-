@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUser } from '@/lib/request-auth';
 import { 
   getCoupons, 
   getCouponByName, 
@@ -10,7 +11,18 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+async function requireAdmin(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth.response || !auth.user) return { response: auth.response };
+  const metadata = auth.user.app_metadata ?? {};
+  const allowed = metadata.role === 'admin' || metadata.is_admin === true;
+  return { response: allowed ? null : NextResponse.json({ error: 'Acceso administrativo requerido' }, { status: 403 }) };
+}
+
+
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin(request);
+  if (auth.response) return auth.response;
   try {
     const coupons = await getCoupons();
     return NextResponse.json({ coupons });
@@ -20,6 +32,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin(request);
+  if (auth.response) return auth.response;
   try {
     const body = await request.json();
     if (!body || !body.name) {
@@ -50,6 +64,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const auth = await requireAdmin(request);
+  if (auth.response) return auth.response;
   try {
     const body = await request.json();
     if (!body.id) {
@@ -65,6 +81,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireAdmin(request);
+  if (auth.response) return auth.response;
   try {
     const id = request.nextUrl.searchParams.get('id');
     if (!id) {

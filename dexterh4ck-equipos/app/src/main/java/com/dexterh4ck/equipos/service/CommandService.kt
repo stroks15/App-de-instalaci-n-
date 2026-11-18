@@ -13,11 +13,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.dexterh4ck.equipos.data.*
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
+import com.dexterh4ck.equipos.util.PairingCode
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
 import org.json.JSONObject
 import kotlinx.coroutines.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
@@ -28,6 +30,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Servicio en segundo plano de Dexterh4ck Equipos.
@@ -48,9 +51,30 @@ class CommandService : Service() {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val registrationInProgress = AtomicBoolean(false)
+    @Volatile private var lastRegistrationAt = 0L
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
     private val httpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val outgoing = chain.request()
+            val token = AgentTokenStore.getToken(this@CommandService)
+            val backendHost = config.serverUrl.toHttpUrlOrNull()?.host
+            val request = outgoing.newBuilder().apply {
+                // Never leak the per-device bearer token to APK/CDN URLs or any other host.
+                if (
+                    !token.isNullOrBlank() &&
+                    outgoing.url.isHttps &&
+                    backendHost != null &&
+                    outgoing.url.host.equals(backendHost, ignoreCase = true)
+                ) {
+                    header("Authorization", "Bearer $token")
+                } else {
+                    removeHeader("Authorization")
+                }
+            }.build()
+            chain.proceed(request)
+        }
         .connectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT, TimeUnit.SECONDS)
         .build()
@@ -86,8 +110,10 @@ class CommandService : Service() {
             deviceId = prefs.getString(AgentConfig.KEY_DEVICE_ID, androidId) ?: androidId,
             deviceName = prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV") ?: "Equipo TV",
             isPaired = prefs.getBoolean(AgentConfig.KEY_IS_PAIRED, false),
-            serverUrl = prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL)
-                ?: AgentConfig.DEFAULT_SERVER_URL
+            serverUrl = (prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL)
+                ?: AgentConfig.DEFAULT_SERVER_URL).let { saved ->
+                if (saved.contains("supabase.co", ignoreCase = true)) AgentConfig.DEFAULT_SERVER_URL else saved
+            }
         )
     }
 
@@ -108,11 +134,15 @@ class CommandService : Service() {
     // ====================== REGISTRO DEL EQUIPO ======================
 
     private fun registerDevice() {
+        if (!registrationInProgress.compareAndSet(false, true)) return
+        lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
                 val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
                 val device = DeviceRegistration(
                     device_id = config.deviceId,
+                    hardware_id = config.deviceId,
+                    pairing_code = PairingCode.getOrCreate(this@CommandService),
                     name = config.deviceName,
                     type = "android_tv",
                     platform = "fireos".takeIf { Build.MANUFACTURER.contains("Amazon", ignoreCase = true) } ?: "android",
@@ -120,10 +150,24 @@ class CommandService : Service() {
                     status = "online",
                     last_seen = now
                 )
-                api.registerDevice(device)
+                val response = api.registerDevice(device)
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "Registro rechazado: HTTP ${response.code()}")
+                    return@launch
+                }
+                val token = response.body()?.agent_token
+                if (!token.isNullOrBlank()) {
+                    if (!AgentTokenStore.saveToken(this@CommandService, token)) {
+                        Log.e(TAG, "No se pudo guardar la credencial de forma cifrada")
+                        return@launch
+                    }
+                }
+                lastRegistrationAt = System.currentTimeMillis()
                 Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
             } catch (e: Exception) {
                 Log.e(TAG, "Error registrando equipo: ${e.message}")
+            } finally {
+                registrationInProgress.set(false)
             }
         }
     }
@@ -134,6 +178,7 @@ class CommandService : Service() {
         scope.launch {
             while (isActive) {
                 try {
+                    if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
                     checkForCommands()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error polling: ${e.message}")
@@ -145,6 +190,11 @@ class CommandService : Service() {
 
     private suspend fun checkForCommands() {
         if (config.deviceId.isEmpty()) return
+        val token = AgentTokenStore.getToken(this)
+        if (token.isNullOrBlank()) {
+            registerDevice()
+            return
+        }
         val response = api.getTasks(config.deviceId, "queued")
         if (response.isSuccessful) {
             val tasks = response.body() ?: emptyList()
@@ -222,7 +272,7 @@ class CommandService : Service() {
     /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
     private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null) {
         try {
-            api.updateTask(id, TaskUpdate(status = status, result = result, error = error))
+            api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
         } catch (e: Exception) {
             Log.e(TAG, "Error reportando tarea $id: ${e.message}")
         }

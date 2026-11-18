@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createCheckoutSession, createPaymentSession, handleWebhookEvent } from '@/lib/stripe';
-import { validateCoupon, applyCoupon } from '@/lib/auth';
+import { createCheckoutSession, createPaymentSession } from '@/lib/stripe';
+import { validateCoupon } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     } else {
       // One-time payment
       const session = await createPaymentSession({
-        amount: metadata?.amount || 49.99, // Default $49.99
+        amount: 49.99, // Fixed server-side one-time price; never trust client metadata
         currency: 'usd',
         customerEmail,
         couponCode: couponValid ? couponCode : undefined,

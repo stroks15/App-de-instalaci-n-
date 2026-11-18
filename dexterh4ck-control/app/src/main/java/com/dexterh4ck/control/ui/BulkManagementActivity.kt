@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.data.ApiConfig
+import com.dexterh4ck.control.data.AuthStore
 import com.dexterh4ck.control.data.KioskApi
 import com.dexterh4ck.control.data.TaskRequest
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,7 @@ class BulkManagementActivity : AppCompatActivity() {
         val retrofit = Retrofit.Builder()
             .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
+            .client(AuthStore.client(this))
             .build()
         api = retrofit.create(KioskApi::class.java)
 

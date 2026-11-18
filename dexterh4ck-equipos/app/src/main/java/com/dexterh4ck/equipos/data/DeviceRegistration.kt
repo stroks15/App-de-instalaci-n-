@@ -1,10 +1,10 @@
 package com.dexterh4ck.equipos.data
 
-/**
- * Datos para registrar/actualizar un dispositivo en la tabla `devices` del backend.
- */
+/** Datos de alta/heartbeat del agente. */
 data class DeviceRegistration(
     val device_id: String,
+    val hardware_id: String,
+    val pairing_code: String,
     val name: String,
     val type: String = "android_tv",
     val platform: String = "android",

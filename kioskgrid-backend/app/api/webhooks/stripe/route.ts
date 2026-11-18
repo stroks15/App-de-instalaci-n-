@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleWebhookEvent } from '@/lib/stripe';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
     }
 
-    const supabase = await getSupabase();
+    const supabase = getSupabaseAdmin();
     const event = await handleWebhookEvent(body, signature);
 
     // Handle specific event types that need database updates

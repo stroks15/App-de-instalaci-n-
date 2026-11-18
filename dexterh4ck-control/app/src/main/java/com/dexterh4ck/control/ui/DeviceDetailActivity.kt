@@ -75,6 +75,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         val retrofit = Retrofit.Builder()
             .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
+            .client(AuthStore.client(this))
             .build()
         api = retrofit.create(KioskApi::class.java)
         gson = Gson()

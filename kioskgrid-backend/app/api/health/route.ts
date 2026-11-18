@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ export async function GET() {
   let dbError: string | null = null;
 
   try {
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin();
     const { error } = await supabase.from('tasks').select('id', { count: 'exact', head: true });
     if (error) {
       dbStatus = 'degraded';

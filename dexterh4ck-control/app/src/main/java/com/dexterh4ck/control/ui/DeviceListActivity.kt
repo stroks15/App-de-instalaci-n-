@@ -1,6 +1,8 @@
 package com.dexterh4ck.control.ui
 
 import android.content.Intent
+import android.app.AlertDialog
+import android.widget.EditText
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -14,7 +16,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.DeviceAdapter
 import com.dexterh4ck.control.data.ApiConfig
+import com.dexterh4ck.control.data.AuthStore
 import com.dexterh4ck.control.data.Device
+import com.dexterh4ck.control.data.PairDeviceRequest
 import com.dexterh4ck.control.data.KioskApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,6 +45,7 @@ class DeviceListActivity : AppCompatActivity() {
         val retrofit = Retrofit.Builder()
             .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
+            .client(AuthStore.client(this))
             .build()
         api = retrofit.create(KioskApi::class.java)
 
@@ -58,12 +63,29 @@ class DeviceListActivity : AppCompatActivity() {
         rvDevices.adapter = adapter
 
         findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadDevices() }
+        findViewById<Button>(R.id.btnPair).setOnClickListener { showPairDialog() }
         findViewById<Button>(R.id.btnBulk).setOnClickListener {
             startActivity(Intent(this, BulkManagementActivity::class.java))
         }
 
         loadDevices()
         startAutoRefresh()
+    }
+
+    private fun showPairDialog() {
+        val input = EditText(this).apply { hint = "Código de 5 caracteres"; filters = arrayOf(android.text.InputFilter.LengthFilter(5)); isSingleLine = true }
+        AlertDialog.Builder(this).setTitle("Vincular equipo").setMessage("Escribe el código que aparece en Dexterh4ck Equipos.").setView(input)
+            .setNegativeButton("Cancelar", null).setPositiveButton("Vincular") { _, _ ->
+                val code = input.text.toString().trim().uppercase()
+                if (code.length != 5) { Toast.makeText(this, "El código debe tener 5 caracteres", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                lifecycleScope.launch {
+                    try {
+                        val response = withContext(Dispatchers.IO) { api.pairDevice(PairDeviceRequest(code)) }
+                        if (response.isSuccessful) { Toast.makeText(this@DeviceListActivity, "Equipo vinculado correctamente", Toast.LENGTH_SHORT).show(); loadDevices() }
+                        else Toast.makeText(this@DeviceListActivity, "No se pudo vincular: HTTP ${response.code()}", Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) { Toast.makeText(this@DeviceListActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
+                }
+            }.show()
     }
 
     private fun startAutoRefresh() {
