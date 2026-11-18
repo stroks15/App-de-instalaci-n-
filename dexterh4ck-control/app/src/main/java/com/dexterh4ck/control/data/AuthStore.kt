@@ -59,14 +59,13 @@ object AuthStore {
             if (value != null) return value
             secure.edit().remove(secureKey).apply()
         }
-        val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
-            .getString(legacyKey, null) ?: return null
-        val access = if (secureKey == ACCESS_ENCRYPTED) legacy else accessToken(context)
-        val refresh = if (secureKey == REFRESH_ENCRYPTED) legacy else refreshToken(context)
-        if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-            runCatching { save(context, access, refresh) }
+        val legacyPrefs = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+        val legacyAccess = legacyPrefs.getString(ACCESS, null)
+        val legacyRefresh = legacyPrefs.getString(REFRESH, null)
+        if (!legacyAccess.isNullOrBlank() && !legacyRefresh.isNullOrBlank()) {
+            runCatching { save(context, legacyAccess, legacyRefresh) }
         }
-        return legacy
+        return if (secureKey == ACCESS_ENCRYPTED) legacyAccess else legacyRefresh
     }
 
     private fun secretKey(context: Context): SecretKey {
