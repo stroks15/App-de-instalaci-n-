@@ -12,7 +12,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const db = getSupabaseAdmin();
-  const { data, error } = await db.from('tasks').select('*')
+  const { data, error } = await (db.from('tasks') as any).select('*')
     .eq('device_id', auth.device.id)
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
@@ -51,7 +51,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
   const db = getSupabaseAdmin();
   const persistedStatus = status === 'completed' ? 'done' : status;
-  const { data, error } = await (db.from('tasks') as any).update({
+  const { data, error } = await ((db.from('tasks') as any) as any).update({
     status: persistedStatus,
     result: typeof body.result === 'string' ? body.result.slice(0, 100000) : null,
     error: typeof body.error === 'string' ? body.error.slice(0, 2000) : null,
