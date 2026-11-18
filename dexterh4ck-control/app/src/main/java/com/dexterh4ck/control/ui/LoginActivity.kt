@@ -1,5 +1,7 @@
 package com.dexterh4ck.control.ui
+
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.*
@@ -16,41 +18,139 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-class LoginActivity:AppCompatActivity(){
- private lateinit var email:EditText
- private lateinit var password:EditText
- private lateinit var submit:Button
- override fun onCreate(savedInstanceState:Bundle?){
-  super.onCreate(savedInstanceState)
-  if(!AuthStore.accessToken(this).isNullOrBlank()){openDashboard();return}
-  val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(32,32,32,32)}
-  root.addView(TextView(this).apply{text="DEXTERH4CK CONTROL\nInicia sesión para administrar tus equipos";textSize=22f;gravity=Gravity.CENTER})
-  email=EditText(this).apply{hint="Correo electrónico";inputType=33}
-  password=EditText(this).apply{hint="Contraseña";inputType=129}
-  submit=Button(this).apply{text="Iniciar sesión"}
-  root.addView(email,LinearLayout.LayoutParams(-1,-2));root.addView(password,LinearLayout.LayoutParams(-1,-2));root.addView(submit,LinearLayout.LayoutParams(-1,-2))
-  setContentView(root);submit.setOnClickListener{signIn()}
- }
- private fun signIn(){
-  val user=email.text.toString().trim();val pass=password.text.toString()
-  if(user.isBlank()||pass.isBlank()){Toast.makeText(this,"Ingresa correo y contraseña",Toast.LENGTH_SHORT).show();return}
-  submit.isEnabled=false
-  lifecycleScope.launch{
-   try{
-    val result=withContext(Dispatchers.IO){
-     val body=JSONObject().put("email",user).put("password",pass).toString().toRequestBody("application/json".toMediaType())
-     val req=Request.Builder().url("${ApiConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/token?grant_type=password").header("apikey","sb_publishable_3GDyrM0JTII5TPZ6sAOJnA_YDtxjbiw").post(body).build()
-     OkHttpClient().newCall(req).execute().use{response->
-      val payload=JSONObject(response.body?.string()?: "{}")
-      if(!response.isSuccessful)throw IllegalStateException(payload.optString("msg",payload.optString("message","Credenciales incorrectas")))
-      payload
-     }
+class LoginActivity : AppCompatActivity() {
+    private lateinit var email: EditText
+    private lateinit var password: EditText
+    private lateinit var submit: Button
+
+    private val googleRedirect = "com.dexterh4ck.control://login-callback"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (handleOAuthCallback(intent)) return
+        if (!AuthStore.accessToken(this).isNullOrBlank()) {
+            openDashboard()
+            return
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(32, 32, 32, 32)
+        }
+        root.addView(TextView(this).apply {
+            text = "DEXTERH4CK CONTROL\nInicia sesión para administrar tus equipos"
+            textSize = 22f
+            gravity = Gravity.CENTER
+        })
+        email = EditText(this).apply {
+            hint = "Correo electrónico"
+            inputType = 33
+        }
+        password = EditText(this).apply {
+            hint = "Contraseña"
+            inputType = 129
+        }
+        submit = Button(this).apply { text = "Iniciar sesión" }
+        val google = Button(this).apply { text = "Continuar con Google" }
+
+        root.addView(email, LinearLayout.LayoutParams(-1, -2))
+        root.addView(password, LinearLayout.LayoutParams(-1, -2))
+        root.addView(submit, LinearLayout.LayoutParams(-1, -2))
+        root.addView(TextView(this).apply {
+            text = "O CONTINUAR CON"
+            gravity = Gravity.CENTER
+            setPadding(0, 18, 0, 8)
+        }, LinearLayout.LayoutParams(-1, -2))
+        root.addView(google, LinearLayout.LayoutParams(-1, -2))
+
+        setContentView(root)
+        submit.setOnClickListener { signIn() }
+        google.setOnClickListener { signInWithGoogle() }
     }
-    val access=result.optString("access_token");val refresh=result.optString("refresh_token")
-    if(access.isBlank()||refresh.isBlank())throw IllegalStateException("No se recibió una sesión válida")
-    AuthStore.save(this@LoginActivity,access,refresh);openDashboard()
-   }catch(e:Exception){Toast.makeText(this@LoginActivity,e.message?:"No se pudo iniciar sesión",Toast.LENGTH_LONG).show();submit.isEnabled=true}
-  }
- }
- private fun openDashboard(){startActivity(Intent(this,DeviceListActivity::class.java));finish()}
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOAuthCallback(intent)
+    }
+
+    private fun signInWithGoogle() {
+        try {
+            val authUrl = Uri.parse("${ApiConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/authorize")
+                .buildUpon()
+                .appendQueryParameter("provider", "google")
+                .appendQueryParameter("redirect_to", googleRedirect)
+                .build()
+            startActivity(Intent(Intent.ACTION_VIEW, authUrl))
+        } catch (e: Exception) {
+            Toast.makeText(this, "No se pudo abrir Google: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun handleOAuthCallback(callback: Intent?): Boolean {
+        val uri = callback?.data ?: return false
+        if (uri.scheme != "com.dexterh4ck.control" || uri.host != "login-callback") return false
+
+        val fragment = uri.fragment.orEmpty()
+        val params = Uri.parse("https://oauth-callback.invalid/?$fragment")
+        val access = params.getQueryParameter("access_token")
+        val refresh = params.getQueryParameter("refresh_token")
+        val error = params.getQueryParameter("error_description")
+            ?: params.getQueryParameter("error")
+
+        if (!error.isNullOrBlank()) {
+            Toast.makeText(this, "Google no autorizó el acceso: $error", Toast.LENGTH_LONG).show()
+            return true
+        }
+        if (access.isNullOrBlank() || refresh.isNullOrBlank()) {
+            Toast.makeText(this, "Google no devolvió una sesión válida. Revisa la configuración OAuth.", Toast.LENGTH_LONG).show()
+            return true
+        }
+        AuthStore.save(this, access, refresh)
+        openDashboard()
+        return true
+    }
+
+    private fun signIn() {
+        val user = email.text.toString().trim()
+        val pass = password.text.toString()
+        if (user.isBlank() || pass.isBlank()) {
+            Toast.makeText(this, "Ingresa correo y contraseña", Toast.LENGTH_SHORT).show()
+            return
+        }
+        submit.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val body = JSONObject().put("email", user).put("password", pass)
+                        .toString().toRequestBody("application/json".toMediaType())
+                    val req = Request.Builder()
+                        .url("${ApiConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/token?grant_type=password")
+                        .header("apikey", "sb_publishable_3GDyrM0JTII5TPZ6sAOJnA_YDtxjbiw")
+                        .post(body).build()
+                    OkHttpClient().newCall(req).execute().use { response ->
+                        val payload = JSONObject(response.body?.string() ?: "{}")
+                        if (!response.isSuccessful) throw IllegalStateException(
+                            payload.optString("msg", payload.optString("message", "Credenciales incorrectas"))
+                        )
+                        payload
+                    }
+                }
+                val access = result.optString("access_token")
+                val refresh = result.optString("refresh_token")
+                if (access.isBlank() || refresh.isBlank()) throw IllegalStateException("No se recibió una sesión válida")
+                AuthStore.save(this@LoginActivity, access, refresh)
+                openDashboard()
+            } catch (e: Exception) {
+                Toast.makeText(this@LoginActivity, e.message ?: "No se pudo iniciar sesión", Toast.LENGTH_LONG).show()
+                submit.isEnabled = true
+            }
+        }
+    }
+
+    private fun openDashboard() {
+        startActivity(Intent(this, DeviceListActivity::class.java))
+        finish()
+    }
 }
