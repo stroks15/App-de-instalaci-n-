@@ -491,6 +491,7 @@ class CommandService : Service() {
         if (apkUrl.isBlank()) throw IllegalStateException("URL de APK vacía")
         reportInstallProgress(taskId, "download", 0, 0L)
         val apkFile = downloadApk(taskId, apkUrl)
+        reportInstallProgress(taskId, "downloaded", 100, apkFile.length())
         return installApkFile(taskId, apkFile)
     }
 
