@@ -9,13 +9,13 @@ object ParentalControlStore {
 
     fun block(context: Context, packageName: String, pin: String, minutes: Int): String {
         require(packageName.matches(Regex("^[A-Za-z0-9_.]+$"))) { "Paquete inválido" }
-        require(pin.matches(Regex("^\\d{4,8}$"))) { "El PIN debe contener de 4 a 8 dígitos" }
+        require(pin.matches(Regex("^[a-fA-F0-9]{64}$"))) { "Hash PIN no válido" }
         require(minutes in 0..10080) { "Duración no válida" }
         val result = DevicePolicyHelper.setAppHidden(context, packageName, true)
         check(!result.startsWith("BLOQUEO NO DISPONIBLE") && !result.startsWith("Error")) { result }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.edit()
-            .putString("pin:$packageName", sha256(pin))
+            .putString("pin:$packageName", pin.lowercase())
             .putLong("until:$packageName", if (minutes == 0) Long.MAX_VALUE else System.currentTimeMillis() + minutes * 60_000L)
             .apply()
         return if (minutes == 0) "$result. Bloqueo activo hasta desactivarlo desde Control." else "$result. Bloqueo temporal activado por $minutes minutos."
@@ -26,7 +26,7 @@ object ParentalControlStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString("pin:$packageName", null)
         if (!automatic && stored != null) {
-            require(pin.isNotBlank() && constantTimeEquals(stored, sha256(pin))) { "PIN parental incorrecto" }
+            require(pin.isNotBlank() && constantTimeEquals(stored, pin.lowercase())) { "PIN parental incorrecto" }
         }
         val result = DevicePolicyHelper.setAppHidden(context, packageName, false)
         check(!result.startsWith("BLOQUEO NO DISPONIBLE") && !result.startsWith("Error")) { result }
