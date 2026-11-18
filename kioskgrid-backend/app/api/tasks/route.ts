@@ -20,7 +20,7 @@ export async function POST(request:NextRequest){
  const auth=await requireUser(request);if(auth.response||!auth.user)return auth.response;
  try{
   const b=await request.json(), ref=String(b.device_id||''), type=String(b.type||'');
-  const allowed=['install','uninstall','launch','list_apps','device_info','reboot','pin_app','notify','kiosk_enable','kiosk_disable','block_app','unblock_app','get_usage'];
+  const allowed=['install','uninstall','launch','list_apps','device_info','reboot','pin_app','notify','kiosk_enable','kiosk_disable','block_app','unblock_app','get_usage','adb_command'];
   if(!ref||!allowed.includes(type))return NextResponse.json({error:'Equipo o tipo de tarea no válido'},{status:400});
   const db=getSupabaseAdmin(),{data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
   const d=(owned??[]).find((x: any)=>x.id===ref||x.device_id===ref);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
