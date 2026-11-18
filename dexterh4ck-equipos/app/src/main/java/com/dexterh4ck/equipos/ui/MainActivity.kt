@@ -5,8 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.app.ActivityManager
 import android.app.AlertDialog
@@ -24,8 +22,12 @@ import com.dexterh4ck.equipos.R
 import com.dexterh4ck.equipos.data.AgentConfig
 import com.dexterh4ck.equipos.service.CommandService
 import com.dexterh4ck.equipos.util.DeviceIdentity
-import com.dexterh4ck.equipos.util.PairingCode
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
+import com.dexterh4ck.equipos.data.AgentAuthClient
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Panel compacto y navegable con mando para Android TV / Fire TV. */
 class MainActivity : AppCompatActivity() {
@@ -33,7 +35,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var serverUrl: EditText
     private lateinit var deviceName: EditText
-    private lateinit var pairingCode: TextView
+    private lateinit var email: EditText
+    private lateinit var password: EditText
     private lateinit var adbStatus: TextView
     private lateinit var connectionStatus: TextView
 
@@ -43,14 +46,14 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermissionIfNeeded()
         serverUrl = findViewById(R.id.etServerUrl)
         deviceName = findViewById(R.id.etDeviceName)
-        pairingCode = findViewById(R.id.tvPairingCode)
         adbStatus = findViewById(R.id.tvAdbStatus)
         connectionStatus = findViewById(R.id.tvStatus)
 
         val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
         serverUrl.setText(prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL))
         deviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV"))
-        pairingCode.text = PairingCode.getOrCreate(this)
+        email = findViewById(R.id.etEmail)
+        password = findViewById(R.id.etPassword)
         refreshAdbStatus()
         refreshResourceStats()
         val ownerStatus = DevicePolicyHelper.configureDedicatedDevice(this)
@@ -61,11 +64,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnSave).setOnClickListener { saveAndStart() }
-        findViewById<Button>(R.id.btnCopyCode).setOnClickListener {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Código de vinculación", pairingCode.text))
-            Toast.makeText(this, "Código copiado", Toast.LENGTH_SHORT).show()
-        }
         findViewById<Button>(R.id.btnAdbSettings).setOnClickListener {
             try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
             catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
@@ -176,18 +174,41 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val name = deviceName.text.toString().trim().ifBlank { "Equipo TV" }
+        val accountEmail = email.text.toString().trim()
+        val accountPassword = password.text.toString()
+        if (accountEmail.isBlank() || accountPassword.isBlank()) {
+            Toast.makeText(this, "Ingresa el correo y la contraseña de tu cuenta KioskGrid.", Toast.LENGTH_LONG).show()
+            return
+        }
         val hardwareId = DeviceIdentity.getOrCreateDeviceId(this)
-        getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE).edit()
-            .putString(AgentConfig.KEY_SERVER_URL, url)
-            .putString(AgentConfig.KEY_DEVICE_NAME, name)
-            .putString(AgentConfig.KEY_DEVICE_ID, hardwareId)
-            .apply()
-        try {
-            ContextCompat.startForegroundService(this, Intent(this, CommandService::class.java))
-            connectionStatus.text = "Servicio iniciado — registrando equipo"
-            Toast.makeText(this, "Agente iniciado. Comparte el código para vincularlo.", Toast.LENGTH_LONG).show()
-        } catch (error: Exception) {
-            connectionStatus.text = "No se pudo iniciar: ${error.localizedMessage}"
+        val loginButton = findViewById<Button>(R.id.btnSave)
+        loginButton.isEnabled = false
+        connectionStatus.text = "Autenticando cuenta y registrando equipo…"
+        lifecycleScope.launch {
+            try {
+                val registration = withContext(Dispatchers.IO) {
+                    AgentAuthClient.loginAndRegister(
+                        this@MainActivity, url, hardwareId, name,
+                        accountEmail, accountPassword
+                    )
+                }
+                password.text.clear()
+                ContextCompat.startForegroundService(
+                    this@MainActivity,
+                    Intent(this@MainActivity, CommandService::class.java)
+                )
+                val device = registration.optJSONObject("device")
+                val vpn = registration.optJSONObject("vpn")
+                val ip = device?.optString("assigned_ip").orEmpty()
+                val vpnStatus = vpn?.optString("status") ?: "not_configured"
+                connectionStatus.text = "Cuenta vinculada · IP reservada: ${ip.ifBlank { "pendiente" }} · VPN: $vpnStatus"
+                Toast.makeText(this@MainActivity, "Equipo registrado en tu cuenta KioskGrid.", Toast.LENGTH_LONG).show()
+            } catch (error: Exception) {
+                connectionStatus.text = "No se pudo iniciar sesión: ${error.localizedMessage}"
+                Toast.makeText(this@MainActivity, error.localizedMessage ?: "Error de autenticación", Toast.LENGTH_LONG).show()
+            } finally {
+                loginButton.isEnabled = true
+            }
         }
     }
 }
