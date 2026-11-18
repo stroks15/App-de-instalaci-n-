@@ -700,7 +700,6 @@ class CommandService : Service() {
         val command = payload.trim()
         require(command.isNotBlank() && command.length <= 256) { "Comando vacío o demasiado largo." }
         // This is a constrained local root-shell bridge, not a remote adbd session.
-        // Shell operators, redirects, substitutions and arbitrary scripts are rejected.
         val allowedExact = setOf(
             "getprop", "df -h", "free -h", "dumpsys battery",
             "dumpsys meminfo", "pm list packages", "wm size", "wm density",
@@ -716,7 +715,25 @@ class CommandService : Service() {
             Regex("^wm (size|density)$")
         )
         val safe = command in allowedExact || allowedPattern.any { it.matches(command) }
-        require(safe && !command.any { it in charArrayOf(';', '|', '&', '>', '<', '`', '
+        val forbidden = listOf(";", "|", "&", ">", "<", "`", "$", "\n", "\r")
+        require(safe && forbidden.none { command.contains(it) }) {
+            "Comando no permitido. Se bloquean scripts, operadores y redirecciones."
+        }
+        val outputFile = File(cacheDir, "adb_diagnostic_${System.currentTimeMillis()}.txt")
+        val process = ProcessBuilder("su", "-c", command)
+            .redirectErrorStream(true).redirectOutput(outputFile).start()
+        if (!process.waitFor(15, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            outputFile.delete()
+            throw IllegalStateException("El comando excedió 15 segundos")
+        }
+        val output = outputFile.takeIf { it.exists() }?.readText()?.take(8000).orEmpty()
+        outputFile.delete()
+        if (process.exitValue() != 0) {
+            throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su y Android debe permitir la operación." })
+        }
+        return output.ifBlank { "Comando ejecutado sin salida." }
+    }
 
     // ====================== INFO DEL EQUIPO ======================
 
