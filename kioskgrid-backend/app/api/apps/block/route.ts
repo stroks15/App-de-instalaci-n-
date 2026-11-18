@@ -1,68 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { requireUser } from '@/lib/request-auth';
 
 export const dynamic = 'force-dynamic';
 
-async function resolveDeviceIds(body: any): Promise<string[]> {
-  const supabase = getSupabaseAdmin();
-  if (body.all === true) {
-    const { data } = await supabase.from('devices').select('device_id');
-    return (data || []).map((d: any) => d.device_id);
-  }
-  if (Array.isArray(body.deviceIds) && body.deviceIds.length > 0) {
-    return body.deviceIds;
-  }
-  if (body.deviceId) {
-    return [body.deviceId];
-  }
-  return [];
+async function resolveDeviceIds(body: any, ownerId: string): Promise<string[]> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await (db.from('devices') as any)
+    .select('id,device_id')
+    .eq('owner_id', ownerId);
+  if (error) throw error;
+  const owned = data ?? [];
+  if (body.all === true) return owned.map((d: any) => d.id);
+  const refs = Array.isArray(body.deviceIds) ? body.deviceIds : body.deviceId ? [body.deviceId] : [];
+  if (!refs.length) return [];
+  const selected = owned.filter((d: any) => refs.includes(d.id) || refs.includes(d.device_id));
+  if (selected.length !== new Set(refs).size) throw new Error('Uno o más equipos no pertenecen a esta cuenta');
+  return selected.map((d: any) => d.id);
 }
 
-/**
- * POST /api/apps/block
- * Bloquea o desbloquea una aplicación en uno o varios equipos (sin desinstalarla).
- * Body: { package, block: true|false, deviceId? | deviceIds? | all? }
- *
- * Nota: el bloqueo real (ocultar app) requiere que Dexterh4ck Equipos sea
- * Device Owner del equipo (ver README). Si no lo es, el agente reporta el requisito.
- */
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth.response || !auth.user) return auth.response;
   try {
     const body = await request.json();
-    const { package: pkg, block = true } = body;
-
-    if (!pkg) {
-      return NextResponse.json({ error: 'package es requerido' }, { status: 400 });
+    const pkg = typeof body.package === 'string' ? body.package.trim() : '';
+    const block = body.block !== false;
+    if (!/^[A-Za-z0-9_.]+$/.test(pkg)) {
+      return NextResponse.json({ error: 'Nombre de paquete inválido' }, { status: 400 });
     }
+    const deviceIds = await resolveDeviceIds(body, auth.user.id);
+    if (!deviceIds.length) return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
 
-    const deviceIds = await resolveDeviceIds(body);
-    if (deviceIds.length === 0) {
-      return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
-    }
-
-    const supabase = getSupabaseAdmin();
+    const db = getSupabaseAdmin();
     const now = new Date().toISOString();
     const type = block ? 'block_app' : 'unblock_app';
-
     const rows = deviceIds.map((deviceId: string) => ({
-      device_id: deviceId,
-      type,
-      payload: pkg,
-      status: 'queued',
-      created_at: now,
-      updated_at: now,
+      device_id: deviceId, type, payload: pkg, status: 'queued',
+      created_at: now, updated_at: now
     }));
-
-    const { error: taskError } = await (supabase.from('tasks') as any).insert(rows);
-    if (taskError) throw taskError;
-
-    return NextResponse.json({
-      package: pkg,
-      blocked: block,
-      devices: deviceIds.length,
-      deviceIds,
-    }, { status: 201 });
+    const { error } = await (db.from('tasks') as any).insert(rows);
+    if (error) throw error;
+    return NextResponse.json({ package: pkg, blocked: block, devices: deviceIds.length }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error?.message || 'No se pudo crear la tarea';
+    return NextResponse.json({ error: message }, { status: message.includes('pertenecen') ? 403 : 500 });
   }
 }
