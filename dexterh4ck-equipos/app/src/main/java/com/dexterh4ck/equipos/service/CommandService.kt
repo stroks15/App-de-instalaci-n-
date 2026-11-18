@@ -697,7 +697,7 @@ class CommandService : Service() {
 
     /** Ejecuta sólo diagnósticos ADB predefinidos y únicamente si el equipo ofrece su binario su. */
     private fun runAdbDiagnostic(payload: String): String {
-        val command = payload.trim()
+        val command = payload.trim().removePrefix("adb shell ").trim()
         require(command.isNotBlank() && command.length <= 256) { "Comando vacío o demasiado largo." }
         // This is a constrained local root-shell bridge, not a remote adbd session.
         val allowedExact = setOf(
