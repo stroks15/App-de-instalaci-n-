@@ -1,10 +1,10 @@
 package com.dexterh4ck.control.data.adb
 
 import android.content.Context
-import dev.mobile.dadb.AdbKeyPair
-import dev.mobile.dadb.Dadb
-import dev.mobile.dadb.InstallResult
-import dev.mobile.dadb.SyncResult
+import dadb.AdbKeyPair
+import dadb.Dadb
+import dadb.InstallResult
+import dadb.SyncResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
