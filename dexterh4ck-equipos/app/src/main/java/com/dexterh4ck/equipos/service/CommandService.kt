@@ -222,7 +222,7 @@ class CommandService : Service() {
         }
         reportTask(task.id, "in_progress")
         val (resultJson, errorMsg) = when (task.type) {
-            "install" -> runCatching { installApp(task.payload) }.fold(
+            "install" -> runCatching { installApp(task.id, task.payload) }.fold(
                 { "\"${escapeJson(it)}\"" to null },
                 { "null" to it.message }
             )
@@ -374,7 +374,7 @@ class CommandService : Service() {
         prefs.edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
         reportTask(taskId, "in_progress")
         try {
-            val result = installApp(url)
+            val result = installApp(taskId, url)
             reportTask(taskId, "completed", result = "\"${escapeJson(result)}\"")
             updateNotification("completed", "install")
         } catch (e: Exception) {
@@ -423,62 +423,109 @@ class CommandService : Service() {
      * Instalación remota: descarga el APK desde la URL (Supabase Storage)
      * y lo instala con la API PackageInstaller (UI de confirmación en TV).
      */
-    private suspend fun installApp(apkUrl: String): String {
+    private suspend fun installApp(taskId: String, apkUrl: String): String {
         if (apkUrl.isBlank()) throw IllegalStateException("URL de APK vacía")
-
-        val apkFile = downloadApk(apkUrl)
-        val apkUri: Uri = FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            apkFile
-        )
-
-        return installWithPackageInstaller(apkUri)
+        reportInstallProgress(taskId, "download", 0, 0L)
+        val apkFile = downloadApk(taskId, apkUrl)
+        try {
+            reportInstallProgress(taskId, "install", 90, apkFile.length())
+            val apkUri: Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
+            return installWithPackageInstaller(apkUri, taskId, apkFile.length())
+        } finally {
+            apkFile.delete()
+        }
     }
 
-    private suspend fun downloadApk(url: String): File {
-        val request = Request.Builder().url(url).build()
-        val response = httpClient.newCall(request).execute()
-        if (!response.isSuccessful) throw IOException("Error descargando APK: HTTP ${response.code}")
+    private suspend fun reportInstallProgress(taskId: String, phase: String, percent: Int, totalBytes: Long) {
+        val payload = JSONObject().apply {
+            put("phase", phase)
+            put("progress", percent.coerceIn(0, 100))
+            put("totalBytes", totalBytes)
+        }.toString()
+        reportTask(taskId, "in_progress", result = payload)
+    }
 
-        val body = response.body ?: throw IOException("Cuerpo vacío en la respuesta")
-        val target = File(cacheDir, "pending_install_${System.currentTimeMillis()}.apk")
-        body.byteStream().use { input ->
-            FileOutputStream(target).use { output ->
-                input.copyTo(output)
+    private suspend fun downloadApk(taskId: String, url: String): File {
+        val request = Request.Builder().url(url).get().build()
+        val response = httpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            response.close()
+            throw IOException("Error descargando APK: HTTP ${response.code}")
+        }
+        response.use { httpResponse ->
+            val body = httpResponse.body ?: throw IOException("Cuerpo vacío en la respuesta")
+            val total = body.contentLength()
+            val target = File(cacheDir, "pending_install_${System.currentTimeMillis()}.apk")
+            try {
+                body.byteStream().use { input ->
+                    FileOutputStream(target).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var downloaded = 0L
+                        var lastReported = -1
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count == -1) break
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            val percent = if (total > 0L) ((downloaded * 90L) / total).toInt().coerceIn(0, 90) else 0
+                            if (percent != lastReported && (percent % 5 == 0 || percent == 90)) {
+                                reportInstallProgress(taskId, "download", percent, total)
+                                lastReported = percent
+                            }
+                        }
+                    }
+                }
+                if (!target.exists() || target.length() == 0L) throw IOException("APK descargado vacío")
+                reportInstallProgress(taskId, "install", 90, total)
+                return target
+            } catch (error: Exception) {
+                target.delete()
+                throw error
             }
         }
-        if (!target.exists() || target.length() == 0L) throw IOException("APK descargado vacío")
-        return target
     }
 
-    /**
-     * Instalación con PackageInstaller Session API.
-     * En Android TV muestra el diálogo de confirmación del sistema (navegable con mando).
-     */
-    private fun installWithPackageInstaller(apkUri: Uri): String {
+    private suspend fun installWithPackageInstaller(apkUri: Uri, taskId: String, totalBytes: Long): String {
         val installer = packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         val sessionId = installer.createSession(params)
         val session = installer.openSession(sessionId)
-
-        contentResolver.openInputStream(apkUri)?.use { input ->
-            val out = session.openWrite("dexter_apk", 0, -1)
-            input.copyTo(out)
-            session.fsync(out)
-            try { out.close() } catch (_: Exception) {}
+        try {
+            contentResolver.openInputStream(apkUri)?.use { input ->
+                session.openWrite("dexter_apk", 0, totalBytes).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var copied = 0L
+                    var lastReported = 90
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        output.write(buffer, 0, count)
+                        copied += count
+                        val percent = if (totalBytes > 0L) (90 + copied * 9L / totalBytes).toInt().coerceIn(90, 99) else 95
+                        if (percent != lastReported && percent % 2 == 0) {
+                            reportInstallProgress(taskId, "install", percent, totalBytes)
+                            lastReported = percent
+                        }
+                    }
+                    session.fsync(output)
+                }
+            } ?: throw IOException("No se pudo abrir el APK temporal")
+            val intent = Intent(this, InstallResultReceiver::class.java).apply {
+                putExtra("task_id", taskId)
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                this, sessionId, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+            )
+            session.commit(pendingIntent.intentSender)
+        } finally {
+            session.close()
         }
-
-        val intent = Intent(this, InstallResultReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, sessionId, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
-        )
-        session.commit(pendingIntent.intentSender)
-
-        session.close()
-        return if (DevicePolicyHelper.isDeviceOwner(this)) "Instalación silenciosa enviada como Device Owner." else "Instalación enviada; Android solicitará confirmación porque no hay Device Owner."
+        reportInstallProgress(taskId, "install", 99, totalBytes)
+        return if (DevicePolicyHelper.isDeviceOwner(this))
+            "APK descargado y enviado a PackageInstaller. Device Owner activo; instalación silenciosa solicitada."
+        else "APK descargado y enviado a PackageInstaller. Android solicitará confirmación en pantalla."
     }
 
     // ====================== DESINSTALAR ======================
