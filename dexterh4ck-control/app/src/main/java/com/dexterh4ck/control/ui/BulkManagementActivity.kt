@@ -199,9 +199,11 @@ class BulkManagementActivity : AppCompatActivity() {
                     val removed = withContext(Dispatchers.IO) { api.deleteFile(path = cloudPath!!) }
                     cloudDeleted = removed.isSuccessful
                 }
-                val successCount = terminal.size
-                showProgress(100, "Tareas finalizadas: $successCount de ${taskIds.size}. Fallos al enviar: $sendFailures. APK temporal eliminado de la nube: $cloudDeleted.")
-                toast("Proceso masivo finalizado. Tareas resueltas: $successCount/${taskIds.size}.")
+                val resolvedCount = terminal.size
+                val pendingCount = taskIds.size - resolvedCount
+                val finalProgress = if (pendingCount == 0) 100 else taskIds.sumOf { progressByTask[it] ?: 0 } / taskIds.size
+                showProgress(finalProgress, "Tareas resueltas: $resolvedCount de ${taskIds.size}. Pendientes: $pendingCount. Fallos al enviar: $sendFailures. APK temporal eliminado de la nube: $cloudDeleted.")
+                toast("Proceso masivo: $resolvedCount resueltas; $pendingCount pendientes.")
             } catch (e: Exception) {
                 showProgress(ring.progress, "Error: ${e.message}")
                 toast("Error: ${e.message}")
