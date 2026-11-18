@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.dexterh4ck.control.R
 import com.dexterh4ck.control.data.ApiConfig
 import com.dexterh4ck.control.data.AuthStore
 import com.dexterh4ck.control.data.Device
@@ -328,13 +329,14 @@ class GithubApkActivity : AppCompatActivity() {
                             val percent = json.optInt("progress", 0)
                             val label = when (phase) {
                                 "download" -> "Descargando APK desde GitHub al equipo ${index + 1}/${deviceIds.size}…"
+                                "downloaded" -> "APK descargado en el equipo ${index + 1}/${deviceIds.size}."
                                 "install" -> "Preparando instalación en el equipo ${index + 1}/${deviceIds.size}…"
                                 else -> "Procesando instalación en el equipo ${index + 1}/${deviceIds.size}…"
                             }
                             percent to label
                         }.getOrNull()
                         if (progressData != null) showTransferProgress(progressData.first, progressData.second)
-                        if (task.status == "awaiting_user") showTransferProgress(0, "Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h.")
+                        if (task.status == "awaiting_user") showTransferProgress(100, "APK descargado. Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h.")
                         if (task.status == "completed") { completed++; terminal = true }
                         if (task.status == "failed" || task.status == "expired") { failed++; terminal = true }
                         status.text = "Equipos completados: $completed · Fallidos: $failed · En proceso: ${deviceIds.size - completed - failed}"
