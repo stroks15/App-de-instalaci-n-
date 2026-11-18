@@ -1,46 +1,95 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
-    android:background="#101827" android:fillViewport="true">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical" android:padding="36dp" android:gravity="center_horizontal">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="Dexterh4ck Equipos" android:textColor="#FFFFFF" android:textSize="30sp"
-            android:textStyle="bold" android:layout_marginBottom="20dp"/>
+    android:background="#0B1220" android:fillViewport="true">
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="22dp">
+
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Nombre del equipo" android:textColor="#DCE6F2" android:textSize="18sp"/>
-        <EditText android:id="@+id/etDeviceName" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:hint="Ej. Sala principal"
-            android:textColor="#FFFFFF" android:textColorHint="#9AA8B8"
-            android:backgroundTint="#58A6FF" android:textSize="20sp" android:singleLine="true"/>
+            android:text="⌁  Vincular Equipo" android:textColor="#F4F7FF"
+            android:textSize="27sp" android:textStyle="bold" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="URL del backend KioskGrid" android:textColor="#DCE6F2"
-            android:textSize="16sp" android:layout_marginTop="18dp"/>
-        <EditText android:id="@+id/etServerUrl" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:hint="https://tu-backend.vercel.app"
-            android:inputType="textUri" android:textColor="#FFFFFF" android:textColorHint="#9AA8B8"
-            android:backgroundTint="#58A6FF" android:textSize="16sp" android:singleLine="true"/>
-        <TextView android:id="@+id/tvStatus" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:text="Estado: sin iniciar"
-            android:textColor="#7EE787" android:textSize="20sp" android:layout_marginTop="24dp"/>
+            android:text="Usa el código de 8 caracteres para vincular este dispositivo con Control."
+            android:textColor="#AAB7CA" android:textSize="14sp"
+            android:layout_marginTop="5dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="20dp"
+            android:layout_marginTop="22dp" android:background="#151F31">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Código de vinculación" android:textColor="#F4F7FF"
+                android:textSize="18sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Ingresa este código en la aplicación Control."
+                android:textColor="#AAB7CA" android:textSize="13sp"
+                android:layout_marginTop="5dp" />
+            <TextView android:id="@+id/tvPairingCode"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="XXXXXXXX" android:textColor="#4594FF"
+                android:textSize="38sp" android:textStyle="bold"
+                android:letterSpacing="0.14" android:gravity="center"
+                android:paddingTop="20dp" android:paddingBottom="12dp" />
+            <Button android:id="@+id/btnCopyCode"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Copiar código" android:textAllCaps="false"
+                android:textColor="#FFFFFF" android:backgroundTint="#2459C5" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="18dp"
+            android:layout_marginTop="14dp" android:background="#151F31">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Nombre del equipo" android:textColor="#F4F7FF"
+                android:textSize="17sp" android:textStyle="bold" />
+            <EditText android:id="@+id/etDeviceName"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:hint="Ej. Sala principal" android:textColor="#FFFFFF"
+                android:textColorHint="#8190A6" android:backgroundTint="#6575A0"
+                android:textSize="16sp" android:singleLine="true" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="URL del servidor" android:textColor="#F4F7FF"
+                android:textSize="14sp" android:layout_marginTop="12dp" />
+            <EditText android:id="@+id/etServerUrl"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:hint="https://tu-backend.vercel.app" android:inputType="textUri"
+                android:textColor="#FFFFFF" android:textColorHint="#8190A6"
+                android:backgroundTint="#6575A0" android:textSize="14sp"
+                android:singleLine="true" />
+            <Button android:id="@+id/btnSave"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Guardar e iniciar agente" android:textAllCaps="false"
+                android:textColor="#FFFFFF" android:backgroundTint="#2459C5"
+                android:layout_marginTop="14dp" />
+            <TextView android:id="@+id/tvStatus"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Estado: sin iniciar" android:textColor="#57D6A0"
+                android:textSize="13sp" android:layout_marginTop="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="18dp"
+            android:layout_marginTop="14dp" android:background="#151F31">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Estado de depuración ADB" android:textColor="#F4F7FF"
+                android:textSize="17sp" android:textStyle="bold" />
+            <TextView android:id="@+id/tvAdbStatus"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="ADB: comprobando…" android:textColor="#57D6A0"
+                android:textSize="14sp" android:layout_marginTop="8dp" />
+            <Button android:id="@+id/btnAdbSettings"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Activar / configurar depuración ADB"
+                android:textAllCaps="false" android:textColor="#FFFFFF"
+                android:backgroundTint="#5146B8" android:layout_marginTop="10dp" />
+        </LinearLayout>
+
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Código de vinculación" android:textColor="#DCE6F2"
-            android:textSize="18sp" android:layout_marginTop="22dp"/>
-        <TextView android:id="@+id/tvPairingCode" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="-----" android:textColor="#FFCA64"
-            android:textSize="38sp" android:textStyle="bold" android:letterSpacing="0.18"
-            android:layout_marginTop="8dp"/>
-        <Button android:id="@+id/btnCopyCode" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="Copiar código"
-            android:focusable="true" android:layout_marginTop="8dp"/>
-        <TextView android:id="@+id/tvAdbStatus" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:text="ADB: comprobando…"
-            android:textColor="#DCE6F2" android:textSize="18sp" android:layout_marginTop="26dp"/>
-        <Button android:id="@+id/btnAdbSettings" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:text="Abrir ajustes de desarrollador"
-            android:focusable="true" android:layout_marginTop="8dp"/>
-        <Button android:id="@+id/btnSave" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:text="Guardar e iniciar agente"
-            android:focusable="true" android:layout_marginTop="22dp"/>
+            android:text="Mantén este equipo y tu teléfono conectados a Internet para permitir la gestión remota."
+            android:textColor="#8190A6" android:textSize="12sp"
+            android:gravity="center" android:padding="16dp" />
     </LinearLayout>
 </ScrollView>
