@@ -19,6 +19,7 @@ import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
 import org.json.JSONObject
 import kotlinx.coroutines.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
@@ -53,10 +54,22 @@ class CommandService : Service() {
     private lateinit var api: KioskApi
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
+            val outgoing = chain.request()
             val token = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
                 .getString(AgentConfig.KEY_AGENT_TOKEN, null)
-            val request = chain.request().newBuilder().apply {
-                if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
+            val backendHost = config.serverUrl.toHttpUrlOrNull()?.host
+            val request = outgoing.newBuilder().apply {
+                // Never leak the per-device bearer token to APK/CDN URLs or any other host.
+                if (
+                    !token.isNullOrBlank() &&
+                    outgoing.url.isHttps &&
+                    backendHost != null &&
+                    outgoing.url.host.equals(backendHost, ignoreCase = true)
+                ) {
+                    header("Authorization", "Bearer $token")
+                } else {
+                    removeHeader("Authorization")
+                }
             }.build()
             chain.proceed(request)
         }
