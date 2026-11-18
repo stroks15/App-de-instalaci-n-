@@ -32,6 +32,18 @@ export async function DELETE(request:NextRequest,{params}:C){
  const a=await requireUser(request);if(a.response||!a.user)return a.response;
  const db=getSupabaseAdmin(),d=await findOwned(db,params.deviceId,a.user.id);
  if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+ const managerUrl=process.env.WG_MANAGER_URL,managerToken=process.env.WG_MANAGER_TOKEN;
+ if(managerUrl&&managerToken&&d.device_id){
+  try{
+   const removed=await fetch(new URL('/api/peers?device_id='+encodeURIComponent(d.device_id),managerUrl),{
+    method:'DELETE',headers:{authorization:'Bearer '+managerToken},
+    signal:AbortSignal.timeout(8000),cache:'no-store'
+   });
+   if(!removed.ok)return NextResponse.json({error:'No se pudo revocar el peer VPN; el equipo no fue eliminado.'},{status:502});
+  }catch{
+   return NextResponse.json({error:'El gateway VPN no está disponible; el equipo no fue eliminado.'},{status:502});
+  }
+ }
  const {error}=await (db.from('devices') as any).delete().eq('id',d.id);
  if(error)return NextResponse.json({error:'No se pudo eliminar el equipo'},{status:500});
  return NextResponse.json({message:'Equipo eliminado correctamente'});
