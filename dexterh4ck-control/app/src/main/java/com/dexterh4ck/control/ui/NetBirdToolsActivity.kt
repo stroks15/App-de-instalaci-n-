@@ -210,7 +210,7 @@ class NetBirdToolsActivity : ComponentActivity() {
                 val results = operations.runOnDevices(targets) { ip ->
                     progress[ip] = "Consultando batería, almacenamiento y sistema…"
                     val t = operations.telemetry(ip)
-                    telemetry[ip] = "Modelo: ${t.model}\nAndroid: ${t.androidVersion}\nBatería:\n${t.battery}\nAlmacenamiento:\n${t.storage}"
+                    telemetry[ip] = "Modelo: ${t.model}\nAndroid: ${t.androidVersion}\nLatencia ADB: ${t.adbLatencyMs?.let { "$it ms" } ?: "sin respuesta"}\nBatería:\n${t.battery}\nAlmacenamiento:\n${t.storage}"
                     "Telemetría recibida"
                 }
                 output = results.entries.joinToString("\n") { (ip, result) -> "$ip: ${if (result.isSuccess) "OK" else result.exceptionOrNull()?.message}" }
