@@ -23,6 +23,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, allowedApps } = body;
+    const allowedPackages = (Array.isArray(allowedApps) ? allowedApps : typeof allowedApps === 'string' ? allowedApps.split(/[,,\\n]/) : [])
+      .map((value: unknown) => String(value).trim())
+      .filter((value: string) => value.length > 0);
+    if (allowedPackages.some((pkg: string) => !/^[A-Za-z0-9_.]+$/.test(pkg))) {
+      return NextResponse.json({ error: 'La lista de paquetes contiene un nombre inválido' }, { status: 400 });
+    }
     if (!['enable', 'disable'].includes(action)) return NextResponse.json({ error: 'action debe ser enable o disable' }, { status: 400 });
     const deviceIds = await resolveDeviceIds(body, auth.user.id);
     if (!deviceIds.length) return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
@@ -30,13 +36,13 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const type = action === 'enable' ? 'kiosk_enable' : 'kiosk_disable';
     const rows = deviceIds.map((deviceId: string) => ({
-      device_id: deviceId, type, payload: action === 'enable' ? (allowedApps || '') : '',
+      device_id: deviceId, type, payload: action === 'enable' ? JSON.stringify({ allowedPackages }) : '',
       status: 'queued', created_at: now, updated_at: now
     }));
     const { error } = await (db.from('tasks') as any).insert(rows);
     if (error) throw error;
     await (db.from('devices') as any).update({ kiosk_enabled: action === 'enable', updated_at: now }).in('id', deviceIds);
-    return NextResponse.json({ action, devices: deviceIds.length, allowedApps: action === 'enable' ? (allowedApps || '(todas las apps del usuario)') : null }, { status: 201 });
+    return NextResponse.json({ action, devices: deviceIds.length, allowedApps: action === 'enable' ? allowedPackages : null }, { status: 201 });
   } catch (error: any) {
     const message = error?.message || 'No se pudo cambiar el modo kiosk';
     return NextResponse.json({ error: message }, { status: message.includes('pertenecen') ? 403 : 500 });
