@@ -25,7 +25,11 @@ object ControlWireGuardKeyStore {
     fun getOrCreate(context: Context): KeyPair {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(KEY, null)
-        if (!stored.isNullOrBlank()) return KeyPair(Key.fromBase64(decrypt(context, stored)))
+        if (!stored.isNullOrBlank()) {
+            val restored = runCatching { KeyPair(Key.fromBase64(decrypt(context, stored))) }.getOrNull()
+            if (restored != null) return restored
+            prefs.edit().remove(KEY).commit()
+        }
         val pair = KeyPair()
         val cipher = Cipher.getInstance(TRANSFORMATION)
         val store = loadStore()
