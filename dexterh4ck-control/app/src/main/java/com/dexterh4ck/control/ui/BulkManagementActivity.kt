@@ -160,9 +160,10 @@ class BulkManagementActivity : AppCompatActivity() {
                     return@launch
                 }
                 var sent = 0
+                var failed = 0
                 for (device in devices) {
                     try {
-                        withContext(Dispatchers.IO) {
+                        val response = withContext(Dispatchers.IO) {
                             api.createTask(
                                 TaskRequest(
                                     device_id = device.device_id,
@@ -171,10 +172,10 @@ class BulkManagementActivity : AppCompatActivity() {
                                 )
                             )
                         }
-                        sent++
-                    } catch (_: Exception) {}
+                        if (response.isSuccessful) sent++ else failed++
+                    } catch (_: Exception) { failed++ }
                 }
-                toast("Desinstalación de $packageName enviada a $sent equipos")
+                toast("Desinstalación enviada: $sent equipos; $failed fallos")
             } catch (e: Exception) {
                 toast("Error: ${e.message}")
             }
