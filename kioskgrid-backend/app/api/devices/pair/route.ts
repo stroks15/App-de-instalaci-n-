@@ -6,7 +6,7 @@ export async function POST(request:NextRequest){
  const a=await requireUser(request);if(a.response||!a.user)return a.response;
  try{
   const b=await request.json(),code=String(b.pairing_code||'').trim().toUpperCase();
-  if(!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}$/.test(code))return NextResponse.json({error:'Código inválido'},{status:400});
+  if(!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code))return NextResponse.json({error:'Código inválido'},{status:400});
   const db=getSupabaseAdmin(),{data,error}=await (db.from('devices') as any).update({owner_id:a.user.id,paired_at:new Date().toISOString(),pairing_code:null,updated_at:new Date().toISOString()}).eq('pairing_code',code).is('owner_id',null).select('id,device_id,name,status,last_seen,kiosk_enabled').maybeSingle();
   if(error)return NextResponse.json({error:'No se pudo vincular el equipo'},{status:500});
   if(!data)return NextResponse.json({error:'Código incorrecto, expirado o ya vinculado'},{status:404});
