@@ -20,6 +20,7 @@ import com.dexterh4ck.equipos.data.AgentConfig
 import com.dexterh4ck.equipos.service.CommandService
 import com.dexterh4ck.equipos.util.DeviceIdentity
 import com.dexterh4ck.equipos.util.PairingCode
+import com.dexterh4ck.equipos.util.DevicePolicyHelper
 
 /** Panel compacto y navegable con mando para Android TV / Fire TV. */
 class MainActivity : AppCompatActivity() {
@@ -44,6 +45,12 @@ class MainActivity : AppCompatActivity() {
         pairingCode.text = PairingCode.getOrCreate(this)
         refreshAdbStatus()
         refreshResourceStats()
+        val ownerStatus = DevicePolicyHelper.configureDedicatedDevice(this)
+        if (DevicePolicyHelper.isDeviceOwner(this)) {
+            connectionStatus.text = ownerStatus
+        } else {
+            connectionStatus.text = "Equipo listo. Para modo administrado y apps silenciosas, activa Device Owner por ADB."
+        }
 
         findViewById<Button>(R.id.btnSave).setOnClickListener { saveAndStart() }
         findViewById<Button>(R.id.btnCopyCode).setOnClickListener {
