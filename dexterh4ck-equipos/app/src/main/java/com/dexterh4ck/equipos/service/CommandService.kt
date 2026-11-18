@@ -573,7 +573,7 @@ class CommandService : Service() {
             ?: payload.trim()
         require(packageName.isNotBlank()) { "Nombre de paquete vacío" }
         return if (blocked) {
-            val pin = data?.optString("pin", "") ?: ""
+            val pin = data?.optString("pinHash", "") ?: ""
             val minutes = data?.optInt("durationMinutes", 60) ?: 60
             ParentalControlStore.block(this, packageName, pin, minutes)
         } else {
