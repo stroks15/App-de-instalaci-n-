@@ -120,6 +120,7 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnRefreshApps).setOnClickListener { refreshAppsList() }
         findViewById<Button>(R.id.btnDeviceInfo).setOnClickListener { sendTask("device_info", "") }
+        findViewById<Button>(R.id.btnAdbCommand).setOnClickListener { showAdbCommandDialog() }
         findViewById<Button>(R.id.btnReboot).setOnClickListener {
             confirmAction("¿Reiniciar el equipo?") { sendTask("reboot", "") }
         }
@@ -301,6 +302,22 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
     }
 
+
+
+    private fun showAdbCommandDialog() {
+        val commands = arrayOf(
+            "getprop", "df -h", "free -h", "dumpsys battery",
+            "dumpsys meminfo", "pm list packages", "wm size", "wm density",
+            "settings get global airplane_mode_on",
+            "settings get global stay_on_while_plugged_in"
+        )
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Diagnóstico ADB")
+            .setMessage("Selecciona un comando de diagnóstico. La ejecución remota requiere que el equipo tenga root y su habilitado; no se aceptan comandos arbitrarios.")
+            .setItems(commands) { _, which -> sendTask("adb_command", commands[which]) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
 
     private fun renderDeviceResources(raw: String?) {
         val target = findViewById<TextView>(R.id.tvDeviceResources)
