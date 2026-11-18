@@ -345,22 +345,28 @@ class CommandService : Service() {
         session.commit(pendingIntent.intentSender)
 
         session.close()
-        return "Instalación iniciada (confirma en pantalla del equipo)"
+        return if (DevicePolicyHelper.isDeviceOwner(this)) "Instalación silenciosa enviada como Device Owner." else "Instalación enviada; Android solicitará confirmación porque no hay Device Owner."
     }
 
     // ====================== DESINSTALAR ======================
 
     private fun uninstallApp(packageName: String): String {
-        if (packageName.isBlank()) throw IllegalStateException("Nombre de paquete vacío")
+        require(packageName.matches(Regex("^[A-Za-z0-9_.]+$"))) { "Nombre de paquete inválido" }
+        if (DevicePolicyHelper.isDeviceOwner(this)) {
+            val callback = Intent(this, InstallResultReceiver::class.java)
+            val pending = PendingIntent.getBroadcast(this, packageName.hashCode(), callback,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0))
+            packageManager.packageInstaller.uninstall(packageName, pending.intentSender)
+            return "Desinstalación silenciosa enviada al sistema como Device Owner: $packageName"
+        }
         val intent = Intent(Intent.ACTION_DELETE).apply {
-            data = android.net.Uri.parse("package:$packageName")
+            data = Uri.parse("package:$packageName")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        // En Android TV esto muestra el diálogo de desinstalación
         startActivity(intent)
-        return "Solicitud de desinstalación enviada: $packageName (confirma en pantalla)"
+        return "Android requiere confirmar la desinstalación en pantalla: $packageName"
     }
-
     // ====================== ABRIR APP ======================
 
     private fun launchApp(packageName: String): String {
