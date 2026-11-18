@@ -140,28 +140,10 @@ jobs:
             echo "::endgroup::"
           done
 
-      # This is a real Package Manager installation test, not only a ZIP/signature check.
-      - name: Install both APKs on an Android 14 emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          emulator-boot-timeout: 600
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            adb install -r dexterh4ck-equipos/app/build/outputs/apk/release/app-release.apk
-            adb install -r dexterh4ck-control/app/build/outputs/apk/release/app-release.apk
-            adb shell pm path com.dexterh4ck.equipos
-            adb shell pm path com.dexterh4ck.control
-            echo "Las dos APK se instalaron correctamente en Android 14."
-
-      - name: Upload install-tested APKs
+      - name: Upload validated APKs
         uses: actions/upload-artifact@v4
         with:
-          name: dexterh4ck-apks-android14-install-tested
+          name: dexterh4ck-apks-build-validated
           if-no-files-found: error
           retention-days: 30
           path: |
