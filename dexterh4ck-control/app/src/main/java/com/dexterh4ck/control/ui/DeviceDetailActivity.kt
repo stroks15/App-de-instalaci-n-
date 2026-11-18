@@ -248,15 +248,17 @@ class DeviceDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun parseResult(task: Task): String = try {
-        val result = task.result ?: return "(sin resultado)"
-        if (result.trim().startsWith("[")) {
-            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
-            val list: List<Map<String, Any>> = gson.fromJson(result, type)
-            "Resultado: ${list.size} elementos\n" + list.take(20).joinToString("\n") { it.toString() }
-        } else if (result.trim().startsWith("{")) "Resultado:\n$result"
-        else gson.fromJson(result, String::class.java)
-    } catch (_: Exception) { task.result ?: "(sin resultado)" }
+    private fun parseResult(task: Task): String {
+        return try {
+            val result = task.result ?: return "(sin resultado)"
+            if (result.trim().startsWith("[")) {
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val list: List<Map<String, Any>> = gson.fromJson(result, type)
+                "Resultado: ${list.size} elementos\n" + list.take(20).joinToString("\n") { it.toString() }
+            } else if (result.trim().startsWith("{")) "Resultado:\n$result"
+            else gson.fromJson(result, String::class.java)
+        } catch (_: Exception) { task.result ?: "(sin resultado)" }
+    }
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
