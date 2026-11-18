@@ -18,7 +18,6 @@ import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.DeviceAdapter
 import com.dexterh4ck.control.data.ApiConfig
 import com.dexterh4ck.control.data.AuthStore
-import com.dexterh4ck.control.data.Device
 import com.dexterh4ck.control.data.PairDeviceRequest
 import com.dexterh4ck.control.data.KioskApi
 import kotlinx.coroutines.Dispatchers
@@ -29,11 +28,8 @@ import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-/**
- * Pantalla principal de Dexterh4ck Control: lista todos los equipos conectados.
- */
+/** Pantalla principal de Dexterh4ck Control: lista todos los equipos conectados. */
 class DeviceListActivity : AppCompatActivity() {
-
     private lateinit var api: KioskApi
     private lateinit var adapter: DeviceAdapter
     private lateinit var progressBar: ProgressBar
@@ -43,33 +39,28 @@ class DeviceListActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_device_list)
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl(ApiConfig.BASE_URL)
+        val retrofit = Retrofit.Builder().baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
-            .client(AuthStore.client(this))
-            .build()
+            .client(AuthStore.client(this)).build()
         api = retrofit.create(KioskApi::class.java)
 
         val rvDevices = findViewById<RecyclerView>(R.id.rvDevices)
         progressBar = findViewById(R.id.progressBar)
         tvEmpty = findViewById(R.id.tvEmpty)
         rvDevices.layoutManager = LinearLayoutManager(this)
-
         adapter = DeviceAdapter(emptyList()) { device ->
             if (device.device_id.isBlank()) {
                 Toast.makeText(this, "El equipo no tiene un identificador válido", Toast.LENGTH_LONG).show()
-                return@DeviceAdapter
+            } else {
+                startActivity(Intent(this, DeviceDetailActivity::class.java).apply {
+                    putExtra("device_id", device.device_id)
+                    putExtra("device_name", device.name)
+                })
             }
-            val intent = Intent(this, DeviceDetailActivity::class.java)
-            intent.putExtra("device_id", device.device_id)
-            intent.putExtra("device_name", device.name)
-            startActivity(intent)
         }
         rvDevices.adapter = adapter
-
         findViewById<Button>(R.id.btnPair).setOnClickListener { showPairDialog() }
         findViewById<Button>(R.id.btnMenu).setOnClickListener { showActionsMenu(it) }
-
         loadDevices()
         startAutoRefresh()
     }
@@ -96,7 +87,8 @@ class DeviceListActivity : AppCompatActivity() {
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
-        AlertDialog.Builder(this).setTitle("Vincular equipo").setMessage("Escribe el código que aparece en Dexterh4ck Equipos.").setView(input)
+        AlertDialog.Builder(this).setTitle("Vincular equipo")
+            .setMessage("Escribe el código que aparece en Dexterh4ck Equipos.").setView(input)
             .setNegativeButton("Cancelar", null).setPositiveButton("Vincular") { _, _ ->
                 val code = input.text.toString().trim().uppercase()
                 if (!code.matches(Regex("^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$"))) {
