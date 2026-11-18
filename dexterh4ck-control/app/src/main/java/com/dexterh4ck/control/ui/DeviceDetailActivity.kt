@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.InstalledAppAdapter
 import com.dexterh4ck.control.data.*
+import org.json.JSONObject
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
@@ -118,6 +119,7 @@ class DeviceDetailActivity : AppCompatActivity() {
             apkPicker.launch("application/vnd.android.package-archive")
         }
         findViewById<Button>(R.id.btnRefreshApps).setOnClickListener { refreshAppsList() }
+        findViewById<Button>(R.id.btnDeviceInfo).setOnClickListener { sendTask("device_info", "") }
         findViewById<Button>(R.id.btnReboot).setOnClickListener {
             confirmAction("¿Reiniciar el equipo?") { sendTask("reboot", "") }
         }
@@ -263,6 +265,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                                     false
                                 )
                                 tvTaskResult.text = resultText + if (task.error != null) "\nError: ${task.error}" else ""
+                                if (task.type == "device_info" && task.status == "completed") renderDeviceResources(task.result)
                                 if (task.type == "install" && task.status == "completed") {
                                     // Refrescar apps tras instalación
                                     delay(1500)
@@ -296,6 +299,29 @@ class DeviceDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             task.result ?: "(sin resultado)"
         }
+    }
+
+
+    private fun renderDeviceResources(raw: String?) {
+        val target = findViewById<TextView>(R.id.tvDeviceResources)
+        try {
+            val data = JSONObject(raw ?: "{}")
+            val totalRam = data.optLong("totalRamBytes")
+            val freeRam = data.optLong("availRamBytes")
+            val totalStorage = data.optLong("totalStorageBytes")
+            val freeStorage = data.optLong("availStorageBytes")
+            target.text = "RAM: ${formatBytes(freeRam)} libres de ${formatBytes(totalRam)}\\n" +
+                "Almacenamiento: ${formatBytes(freeStorage)} libres de ${formatBytes(totalStorage)}\\n" +
+                "Modelo: ${data.optString("manufacturer")} ${data.optString("model")} · Android ${data.optString("androidVersion")}"
+        } catch (e: Exception) {
+            target.text = "No se pudo interpretar la información del equipo: ${e.message}"
+        }
+    }
+
+    private fun formatBytes(value: Long): String {
+        val gb = value / (1024.0 * 1024.0 * 1024.0)
+        return if (gb >= 1.0) String.format(java.util.Locale.US, "%.2f GB", gb)
+        else String.format(java.util.Locale.US, "%.0f MB", value / (1024.0 * 1024.0))
     }
 
     // ====================== APPS INSTALADAS ======================
