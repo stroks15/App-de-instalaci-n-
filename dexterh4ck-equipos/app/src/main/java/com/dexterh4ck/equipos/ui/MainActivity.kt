@@ -21,10 +21,12 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import com.dexterh4ck.equipos.R
 import com.dexterh4ck.equipos.data.AgentConfig
+import com.dexterh4ck.equipos.data.AgentTokenStore
 import com.dexterh4ck.equipos.service.CommandService
 import com.dexterh4ck.equipos.util.DeviceIdentity
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
@@ -47,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var password: EditText
     private lateinit var adbStatus: TextView
     private lateinit var connectionStatus: TextView
+    private lateinit var deviceNameHeader: TextView
     private var tunnelManager: WireGuardTunnelManager? = null
     private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) connectConfiguredVpn()
@@ -67,8 +70,13 @@ class MainActivity : AppCompatActivity() {
         deviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV"))
         email = findViewById(R.id.etEmail)
         password = findViewById(R.id.etPassword)
+        deviceNameHeader = findViewById(R.id.tvDeviceNameHeader)
+        deviceNameHeader.text = prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo Android")
+        if (!AgentTokenStore.getToken(this).isNullOrBlank()) hideLoginPanel()
         refreshAdbStatus()
         refreshResourceStats()
+        refreshVpnStatus()
+        refreshInstalledAppCount()
         val ownerStatus = DevicePolicyHelper.configureDedicatedDevice(this)
         if (DevicePolicyHelper.isDeviceOwner(this)) {
             connectionStatus.text = ownerStatus
@@ -82,6 +90,7 @@ class MainActivity : AppCompatActivity() {
             catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         }
         findViewById<Button>(R.id.btnDeviceOwner).setOnClickListener { showDeviceOwnerSetup() }
+        findViewById<Button>(R.id.btnOptimizeMemory).setOnClickListener { optimizeMemory() }
         refreshDeviceOwnerStatus()
     }
 
@@ -91,9 +100,11 @@ class MainActivity : AppCompatActivity() {
         if (DevicePolicyHelper.isDeviceOwner(this)) {
             val policyStatus = DevicePolicyHelper.configureDedicatedDevice(this)
             status.text = "Device Owner: ACTIVADO · $policyStatus"
+            status.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
             button.text = "Device Owner activo · Ver estado"
         } else {
             status.text = "Device Owner: no activado · requiere configuración inicial por ADB"
+            status.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
             button.text = "Activar Device Owner"
         }
     }
@@ -180,7 +191,40 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::adbStatus.isInitialized) { refreshAdbStatus(); refreshResourceStats(); refreshDeviceOwnerStatus(); ensureAgentServiceRunning() }
+        if (::adbStatus.isInitialized) { refreshAdbStatus(); refreshResourceStats(); refreshDeviceOwnerStatus(); refreshVpnStatus(); refreshInstalledAppCount(); ensureAgentServiceRunning() }
+    }
+
+    private fun hideLoginPanel() {
+        findViewById<View>(R.id.loginPanel).visibility = View.GONE
+    }
+
+    private fun refreshVpnStatus() {
+        val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+        val ip = prefs.getString("assigned_vpn_ip", null).orEmpty()
+        val configured = prefs.getBoolean("vpn_enabled", false)
+        val view = findViewById<TextView>(R.id.tvVpnStatus)
+        view.text = when {
+            configured && ip.isNotBlank() -> "Gateway provisionado · IP $ip"
+            ip.isNotBlank() -> "IP reservada $ip · gateway pendiente de configurar"
+            else -> "VPN: esperando registro de cuenta"
+        }
+        view.setTextColor(ContextCompat.getColor(this,
+            if (configured) android.R.color.holo_green_dark else android.R.color.darker_gray))
+    }
+
+    private fun refreshInstalledAppCount() {
+        val count = runCatching {
+            packageManager.getInstalledApplications(PackageManager.GET_META_DATA).size
+        }.getOrDefault(0)
+        findViewById<TextView>(R.id.tvAppCount).text = "Aplicaciones instaladas: $count"
+    }
+
+    private fun optimizeMemory() {
+        // Android does not allow third-party apps to clear another app's private cache.
+        trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+        Runtime.getRuntime().gc()
+        refreshResourceStats()
+        Toast.makeText(this, "KioskGrid optimizó su propio proceso. Android administra la RAM de las demás apps.", Toast.LENGTH_LONG).show()
     }
 
     private fun refreshResourceStats() {
@@ -206,12 +250,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshAdbStatus() {
         val enabled = runCatching { Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 1 }.getOrDefault(false)
         adbStatus.text = if (enabled) "ADB: Activado" else "ADB: Desactivado — habilítalo si necesitas depuración"
+        adbStatus.setTextColor(ContextCompat.getColor(this, if (enabled) android.R.color.holo_green_dark else android.R.color.darker_gray))
     }
 
     private fun ensureAgentServiceRunning() {
         val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
         val savedUrl = prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL).orEmpty()
-        if (savedUrl.startsWith("https://") && prefs.getString(AgentConfig.KEY_DEVICE_ID, null) != null) {
+        if (savedUrl.startsWith("https://") && prefs.getString(AgentConfig.KEY_DEVICE_ID, null) != null && !AgentTokenStore.getToken(this).isNullOrBlank()) {
             runCatching { ContextCompat.startForegroundService(this, Intent(this, CommandService::class.java)) }
         }
     }
@@ -242,6 +287,9 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 password.text.clear()
+                hideLoginPanel()
+                deviceNameHeader.text = name
+                refreshVpnStatus()
                 ContextCompat.startForegroundService(
                     this@MainActivity,
                     Intent(this@MainActivity, CommandService::class.java)
