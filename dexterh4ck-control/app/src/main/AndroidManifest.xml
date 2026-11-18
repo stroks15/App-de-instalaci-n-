@@ -18,31 +18,26 @@
         android:theme="@style/Theme.DexterControl"
         android:usesCleartextTraffic="true">
 
-        <activity android:name=".ui.LoginActivity" android:exported="true">
+        <activity
+            android:name=".ui.LoginActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.dexterh4ck.control" android:host="login-callback" />
+            </intent-filter>
         </activity>
 
-        <!-- Panel protegido; sólo se abre después de autenticar -->
         <activity android:name=".ui.DeviceListActivity" android:exported="false" />
-
-        <!-- Activity de gestión de un dispositivo seleccionado -->
-        <activity
-            android:name=".ui.DeviceDetailActivity"
-            android:exported="false" />
-
-        <!-- Activity para seleccionar APK del almacenamiento -->
-        <activity
-            android:name=".ui.ApkPickerActivity"
-            android:exported="false" />
-
-        <!-- Activity para gestión masiva (todos los dispositivos) -->
-        <activity
-            android:name=".ui.BulkManagementActivity"
-            android:exported="false" />
+        <activity android:name=".ui.DeviceDetailActivity" android:exported="false" />
+        <activity android:name=".ui.ApkPickerActivity" android:exported="false" />
+        <activity android:name=".ui.BulkManagementActivity" android:exported="false" />
 
     </application>
-
 </manifest>
