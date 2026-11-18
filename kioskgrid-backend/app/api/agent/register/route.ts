@@ -5,7 +5,7 @@ import { hashAgentToken } from '@/lib/agent-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<Response> {
   try {
     const body = await request.json();
     const hardwareId = String(body.hardware_id || body.device_id || '').trim().slice(0, 128);
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       .eq('hardware_id', hardwareId).maybeSingle();
     if (lookupError) throw lookupError;
 
-    const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
+    const bearer = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '').trim() || '';
     if (existing?.agent_key_hash) {
       const authorizedByToken = !!bearer && hashAgentToken(bearer) === existing.agent_key_hash;
       const authorizedByVisiblePairingCode = !existing.owner_id && pairingCode === existing.pairing_code;
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const row = {
       hardware_id: hardwareId,
       device_id: hardwareId,
-      pairing_code,
+      pairing_code: pairingCode,
       name,
       type: String(body.type || 'android_tv').slice(0, 40),
       platform: String(body.platform || 'android').slice(0, 30),
