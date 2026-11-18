@@ -385,7 +385,7 @@ class CommandService : Service() {
 
     private suspend fun expirePendingInstall(taskId: String) {
         val key = "task_$taskId"
-        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").apply()
+        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
         reportTask(taskId, "expired", error = "Solicitud cancelada: no fue aceptada en 48 horas.")
