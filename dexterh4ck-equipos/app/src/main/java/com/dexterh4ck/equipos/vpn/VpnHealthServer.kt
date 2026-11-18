@@ -18,6 +18,7 @@ object VpnHealthServer {
     fun start(context: Context, assignedIp: String) {
         if (listener?.isClosed == false) return
         val address = InetAddress.getByName(assignedIp.substringBefore('/'))
+        val packageName = context.packageName
         val socket = ServerSocket()
         socket.reuseAddress = true
         socket.bind(InetSocketAddress(address, PORT), 8)
@@ -32,7 +33,7 @@ object VpnHealthServer {
                         while (reader.readLine()?.isNotEmpty() == true) { }
                         val ok = requestLine.startsWith("GET /health ")
                         val body = if (ok) {
-                            """{"ok":true,"device":"${context.packageName}"}"""
+                            """{"ok":true,"device":"$packageName"}"""
                         } else {
                             """{"ok":false,"error":"not_found"}"""
                         }
