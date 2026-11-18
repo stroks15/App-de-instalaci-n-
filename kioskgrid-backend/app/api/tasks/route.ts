@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
  let q=(db.from('tasks') as any).select('*').order('created_at',{ascending:false}).limit(limit);
  const {data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
  const devices=owned??[];
- if(deviceRef){const d=devices.find(x=>x.id===deviceRef||x.device_id===deviceRef);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});q=q.eq('device_id',d.id);}
+ if(deviceRef){const d=devices.find((x: any)=>x.id===deviceRef||x.device_id===deviceRef);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});q=q.eq('device_id',d.id);}
  else q=q.in('device_id',devices.map(x=>x.id));
  if(status)q=q.eq('status',status==='completed'?'done':status); if(type)q=q.eq('type',type);
  const {data,error}=await q; if(error)return NextResponse.json({error:'No se pudieron consultar las tareas'},{status:500});
@@ -23,7 +23,7 @@ export async function POST(request:NextRequest){
   const allowed=['install','uninstall','launch','list_apps','device_info','reboot','pin_app','notify','kiosk_enable','kiosk_disable','block_app','unblock_app','get_usage'];
   if(!ref||!allowed.includes(type))return NextResponse.json({error:'Equipo o tipo de tarea no válido'},{status:400});
   const db=getSupabaseAdmin(),{data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
-  const d=(owned??[]).find(x=>x.id===ref||x.device_id===ref);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
+  const d=(owned??[]).find((x: any)=>x.id===ref||x.device_id===ref);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
   const {data,error}=await (db.from('tasks') as any).insert({device_id:d.id,type,payload:b.payload??null,status:'queued',created_at:new Date().toISOString(),updated_at:new Date().toISOString()}).select('*').single();
   if(error)return NextResponse.json({error:'No se pudo crear la tarea'},{status:500});
   await (db.from('device_audit_logs') as any).insert({device_id:d.id,owner_id:auth.user.id,actor_id:auth.user.id,action:'task_created',metadata:{task_id:data.id,type}});
