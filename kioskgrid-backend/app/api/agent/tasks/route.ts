@@ -111,9 +111,27 @@ export async function PATCH(request: NextRequest): Promise<Response> {
         ) {
           const objectPath = decodeURIComponent(apkUrl.pathname.slice(signedPrefix.length));
           if (objectPath.startsWith(auth.device.owner_id + '/')) {
-            const { error: removeError } = await db.storage.from('apks').remove([objectPath]);
-            cloudApkDeleted = !removeError;
-            if (removeError) console.error('Temporary APK cleanup failed:', removeError.message);
+            // En instalaciones masivas el mismo objeto lo comparten varios equipos.
+            // Borrarlo sólo cuando todos los destinatarios ya lo descargaron o resolvieron su tarea.
+            const { data: siblings } = await ((db.from('tasks') as any) as any)
+              .select('status,result')
+              .eq('type', 'install')
+              .eq('payload', originalTask.payload);
+            const allDevicesHaveCopy = (siblings ?? []).length > 0 && (siblings ?? []).every((item: any) => {
+              if (['awaiting_user', 'done', 'completed', 'failed', 'expired'].includes(item.status)) return true;
+              if (item.status !== 'in_progress') return false;
+              try {
+                const result = typeof item.result === 'string' ? JSON.parse(item.result) : item.result;
+                return ['downloaded', 'install', 'installed'].includes(result?.phase);
+              } catch {
+                return false;
+              }
+            });
+            if (allDevicesHaveCopy) {
+              const { error: removeError } = await db.storage.from('apks').remove([objectPath]);
+              cloudApkDeleted = !removeError;
+              if (removeError) console.error('Temporary APK cleanup failed:', removeError.message);
+            }
           }
         }
       }
