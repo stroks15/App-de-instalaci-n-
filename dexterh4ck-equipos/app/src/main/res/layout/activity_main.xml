@@ -7,35 +7,12 @@
         android:orientation="vertical" android:padding="22dp">
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="⌁  Vincular Equipo" android:textColor="#F4F7FF"
+            android:text="⌁  Dexterh4ck Equipos" android:textColor="#F4F7FF"
             android:textSize="27sp" android:textStyle="bold" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Usa el código de 8 caracteres para vincular este dispositivo con Control."
+            android:text="Inicia sesión con tu cuenta KioskGrid para registrar este equipo automáticamente."
             android:textColor="#AAB7CA" android:textSize="14sp"
             android:layout_marginTop="5dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="vertical" android:padding="20dp"
-            android:layout_marginTop="22dp" android:background="#151F31">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Código de vinculación" android:textColor="#F4F7FF"
-                android:textSize="18sp" android:textStyle="bold" />
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Ingresa este código en la aplicación Control."
-                android:textColor="#AAB7CA" android:textSize="13sp"
-                android:layout_marginTop="5dp" />
-            <TextView android:id="@+id/tvPairingCode"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="XXXXXXXX" android:textColor="#4594FF"
-                android:textSize="38sp" android:textStyle="bold"
-                android:letterSpacing="0.14" android:gravity="center"
-                android:paddingTop="20dp" android:paddingBottom="12dp" />
-            <Button android:id="@+id/btnCopyCode"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Copiar código" android:textAllCaps="false"
-                android:textColor="#FFFFFF" android:backgroundTint="#2459C5" />
-        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -50,6 +27,22 @@
                 android:textColorHint="#8190A6" android:backgroundTint="#6575A0"
                 android:textSize="16sp" android:singleLine="true" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Correo electrónico" android:textColor="#F4F7FF"
+                android:textSize="14sp" android:layout_marginTop="14dp" />
+            <EditText android:id="@+id/etEmail"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:hint="usuario@correo.com" android:inputType="textEmailAddress"
+                android:textColor="#FFFFFF" android:textColorHint="#8190A6"
+                android:backgroundTint="#6575A0" android:singleLine="true" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Contraseña" android:textColor="#F4F7FF"
+                android:textSize="14sp" android:layout_marginTop="10dp" />
+            <EditText android:id="@+id/etPassword"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:hint="Contraseña de tu cuenta" android:inputType="textPassword"
+                android:textColor="#FFFFFF" android:textColorHint="#8190A6"
+                android:backgroundTint="#6575A0" android:singleLine="true" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="URL del servidor" android:textColor="#F4F7FF"
                 android:textSize="14sp" android:layout_marginTop="12dp" />
             <EditText android:id="@+id/etServerUrl"
@@ -60,7 +53,7 @@
                 android:singleLine="true" />
             <Button android:id="@+id/btnSave"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:text="Guardar e iniciar agente" android:textAllCaps="false"
+                android:text="Iniciar sesión y registrar equipo" android:textAllCaps="false"
                 android:textColor="#FFFFFF" android:backgroundTint="#2459C5"
                 android:layout_marginTop="14dp" />
             <TextView android:id="@+id/tvStatus"
