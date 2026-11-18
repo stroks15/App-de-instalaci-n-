@@ -337,7 +337,7 @@ class GithubApkActivity : AppCompatActivity() {
                         }.getOrNull()
                         if (progressData != null) showTransferProgress(progressData.first, progressData.second)
                         if (task.status == "awaiting_user") showTransferProgress(100, "APK descargado. Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h.")
-                        if (task.status == "completed") { completed++; terminal = true }
+                        if (task.status == "completed" || task.status == "done") { completed++; terminal = true }
                         if (task.status == "failed" || task.status == "expired") { failed++; terminal = true }
                         status.text = "Equipos completados: $completed · Fallidos: $failed · En proceso: ${deviceIds.size - completed - failed}"
                     }
