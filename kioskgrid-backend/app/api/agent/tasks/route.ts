@@ -50,8 +50,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   }
 
   const db = getSupabaseAdmin();
+  const persistedStatus = status === 'completed' ? 'done' : status;
   const { data, error } = await (db.from('tasks') as any).update({
-    status,
+    status: persistedStatus,
     result: typeof body.result === 'string' ? body.result.slice(0, 100000) : null,
     error: typeof body.error === 'string' ? body.error.slice(0, 2000) : null,
     updated_at: new Date().toISOString()
