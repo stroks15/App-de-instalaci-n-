@@ -27,7 +27,14 @@ object AgentTokenStore {
     fun getToken(context: Context): String? {
         val securePrefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val encrypted = securePrefs.getString(ENCRYPTED_TOKEN, null)
-        if (!encrypted.isNullOrBlank()) return runCatching { decrypt(context, encrypted) }.getOrNull()
+        if (!encrypted.isNullOrBlank()) {
+            val decrypted = runCatching { decrypt(context, encrypted) }.getOrNull()
+            if (decrypted != null) {
+                context.getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+                    .edit().remove(AgentConfig.KEY_AGENT_TOKEN).apply()
+            }
+            return decrypted
+        }
 
         val legacyPrefs = context.getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
         val legacy = legacyPrefs.getString(AgentConfig.KEY_AGENT_TOKEN, null) ?: return null
@@ -48,8 +55,13 @@ object AgentTokenStore {
             cipher.init(Cipher.ENCRYPT_MODE, publicKey)
             val ciphertext = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
             val encoded = Base64.encodeToString(ciphertext, Base64.NO_WRAP)
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(ENCRYPTED_TOKEN, encoded).commit()
+            if (saved) {
+                context.getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+                    .edit().remove(AgentConfig.KEY_AGENT_TOKEN).apply()
+            }
+            saved
         }.getOrDefault(false)
     }
 
