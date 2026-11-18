@@ -10,6 +10,15 @@ export async function GET(request: NextRequest) {
  let q=(db.from('tasks') as any).select('*').order('created_at',{ascending:false}).limit(limit);
  const {data:owned}=await (db.from('devices') as any).select('id,device_id').eq('owner_id',auth.user.id);
  const devices=owned??[];
+ const deviceIds=devices.map((x: any)=>x.id);
+ if(deviceIds.length){
+  const now=new Date().toISOString();
+  const {error:expiryError}=await (db.from('tasks') as any).update({
+   status:'expired',error:'Solicitud cancelada: no fue aceptada en 48 horas.',updated_at:now
+  }).in('device_id',deviceIds).eq('type','install')
+   .in('status',['queued','awaiting_user']).not('expires_at','is',null).lte('expires_at',now);
+  if(expiryError)return NextResponse.json({error:'No se pudieron caducar las instalaciones vencidas'},{status:500});
+ }
  if(deviceRef){const d=devices.find((x: any)=>x.id===deviceRef||x.device_id===deviceRef);if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});q=q.eq('device_id',d.id);}
  else q=q.in('device_id',devices.map((x: any)=>x.id));
  if(status)q=q.eq('status',status==='completed'?'done':status); if(type)q=q.eq('type',type);
