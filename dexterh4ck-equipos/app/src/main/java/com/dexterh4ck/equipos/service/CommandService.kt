@@ -17,6 +17,7 @@ import com.dexterh4ck.equipos.util.PairingCode
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
+import com.dexterh4ck.equipos.util.ParentalControlStore
 import org.json.JSONObject
 import kotlinx.coroutines.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -45,6 +46,8 @@ class CommandService : Service() {
         private const val TAG = "DexterEquipos"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "dexter_equipos_channel"
+        private const val PENDING_INSTALL_CHANNEL_ID = "dexter_pending_install_channel"
+        private const val PENDING_INSTALL_RETENTION_MS = 48L * 60L * 60L * 1000L
         private const val POLL_INTERVAL = 5_000L
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 60L
@@ -90,6 +93,10 @@ class CommandService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification("Dexterh4ck Equipos activo"))
+        if (intent?.action == PendingInstallActionReceiver.ACTION_ACCEPT) {
+            val taskId = intent.getStringExtra(PendingInstallActionReceiver.EXTRA_TASK_ID)
+            if (!taskId.isNullOrBlank()) scope.launch { acceptPendingInstall(taskId) }
+        }
         return START_STICKY
     }
 
@@ -179,6 +186,8 @@ class CommandService : Service() {
             while (isActive) {
                 try {
                     if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
+                    expireOldPendingInstalls()
+                    ParentalControlStore.expire(this@CommandService)
                     checkForCommands()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error polling: ${e.message}")
@@ -207,6 +216,10 @@ class CommandService : Service() {
     // ====================== EJECUCIÓN DE TAREAS ======================
 
     private suspend fun executeTask(task: Task) {
+        if (task.type == "install" && !DevicePolicyHelper.isDeviceOwner(this)) {
+            queueInstallForUserAcceptance(task)
+            return
+        }
         reportTask(task.id, "in_progress")
         val (resultJson, errorMsg) = when (task.type) {
             "install" -> runCatching { installApp(task.payload) }.fold(
@@ -257,6 +270,10 @@ class CommandService : Service() {
                 { it to null },
                 { "null" to it.message }
             )
+            "adb_command" -> runCatching { runAdbDiagnostic(task.payload) }.fold(
+                { "\"${escapeJson(it)}\"" to null },
+                { "null" to it.message }
+            )
             "reboot" -> runCatching { rebootDevice() }.fold(
                 { "\"${escapeJson(it)}\"" to null },
                 { "null" to it.message }
@@ -269,12 +286,134 @@ class CommandService : Service() {
         updateNotification(finalStatus, task.type)
     }
 
-    /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
-    private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null) {
+    private fun pendingInstallPrefs() = getSharedPreferences("pending_user_installs", Context.MODE_PRIVATE)
+
+    private fun pendingInstallNotificationId(taskId: String) = taskId.hashCode() and 0x7fffffff
+
+    private fun parseServerExpiry(value: String?): Long {
+        if (value.isNullOrBlank()) return 0L
+        // java.text.SimpleDateFormat's X timezone token is unavailable on some API 21-23 TVs.
+        val normalized = value.replace(Regex("([+-]\\d{2}):(\\d{2})$")) { match ->
+            match.groupValues[1] + match.groupValues[2]
+        }.replace(Regex("Z$"), "+0000")
+        val formats = listOf("yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ")
+        for (pattern in formats) {
+            try {
+                val parser = SimpleDateFormat(pattern, Locale.US)
+                parser.parse(normalized)?.let { return it.time }
+            } catch (_: Exception) { }
+        }
+        return 0L
+    }
+
+    private suspend fun queueInstallForUserAcceptance(task: Task) {
+        val prefs = pendingInstallPrefs()
+        val key = "task_${task.id}"
+        val existingExpiry = prefs.getLong("${key}_expires", 0L)
+        val serverExpiry = parseServerExpiry(task.expires_at)
+        val expiresAt = when {
+            existingExpiry > 0L -> existingExpiry
+            serverExpiry > 0L -> serverExpiry
+            else -> System.currentTimeMillis() + PENDING_INSTALL_RETENTION_MS
+        }
+        if (expiresAt <= System.currentTimeMillis()) {
+            expirePendingInstall(task.id)
+            return
+        }
+        prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
+        if (!prefs.getBoolean("${key}_reported", false)) {
+            val reported = reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
+            if (reported) prefs.edit().putBoolean("${key}_reported", true).apply()
+        }
+        showPendingInstallNotification(task.id, task.payload, expiresAt)
+    }
+
+    private fun showPendingInstallNotification(taskId: String, apkUrl: String, expiresAt: Long) {
+        val notificationId = pendingInstallNotificationId(taskId)
+        val accept = Intent(this, PendingInstallActionReceiver::class.java).apply {
+            action = PendingInstallActionReceiver.ACTION_ACCEPT
+            putExtra(PendingInstallActionReceiver.EXTRA_TASK_ID, taskId)
+        }
+        val acceptPending = PendingIntent.getBroadcast(
+            this, notificationId, accept,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val open = PendingIntent.getActivity(
+            this, notificationId, Intent(this, com.dexterh4ck.equipos.ui.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val remainingHours = ((expiresAt - System.currentTimeMillis()).coerceAtLeast(0L) / 3600000L)
+        val notification = NotificationCompat.Builder(this, PENDING_INSTALL_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Instalación pendiente de autorización")
+            .setContentText("Acepta instalar la aplicación. Caduca en $remainingHours h.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Android no tiene Device Owner activo. Acepta la instalación desde esta notificación. La solicitud se cancelará automáticamente al cumplir 48 horas."))
+            .setContentIntent(open)
+            .addAction(android.R.drawable.ic_input_add, "Aceptar instalación", acceptPending)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(notificationId, notification)
+    }
+
+    private suspend fun acceptPendingInstall(taskId: String) {
+        val prefs = pendingInstallPrefs()
+        val key = "task_$taskId"
+        val url = prefs.getString("${key}_url", null)
+        val expiry = prefs.getLong("${key}_expires", 0L)
+        if (url.isNullOrBlank()) return
+        if (System.currentTimeMillis() >= expiry) {
+            expirePendingInstall(taskId)
+            return
+        }
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .cancel(pendingInstallNotificationId(taskId))
+        prefs.edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        reportTask(taskId, "in_progress")
         try {
-            api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
+            val result = installApp(url)
+            reportTask(taskId, "completed", result = "\"${escapeJson(result)}\"")
+            updateNotification("completed", "install")
+        } catch (e: Exception) {
+            reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
+            updateNotification("failed", "install")
+        }
+    }
+
+    private suspend fun expirePendingInstall(taskId: String) {
+        val key = "task_$taskId"
+        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .cancel(pendingInstallNotificationId(taskId))
+        reportTask(taskId, "expired", error = "Solicitud cancelada: no fue aceptada en 48 horas.")
+    }
+
+    private suspend fun expireOldPendingInstalls() {
+        val prefs = pendingInstallPrefs()
+        val now = System.currentTimeMillis()
+        prefs.all.keys.filter { it.endsWith("_expires") }.forEach { expiryKey ->
+            val expires = prefs.getLong(expiryKey, 0L)
+            val taskId = expiryKey.removePrefix("task_").removeSuffix("_expires")
+            if (expires > 0L && now >= expires) expirePendingInstall(taskId)
+            else {
+                val url = prefs.getString("task_${taskId}_url", null)
+                if (!url.isNullOrBlank()) showPendingInstallNotification(taskId, url, expires)
+            }
+        }
+    }
+
+    /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
+    private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null): Boolean {
+        return try {
+            val response = api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
+            if (!response.isSuccessful) Log.e(TAG, "Backend rechazó estado $status de tarea $id: HTTP ${response.code()}")
+            response.isSuccessful
         } catch (e: Exception) {
             Log.e(TAG, "Error reportando tarea $id: ${e.message}")
+            false
         }
     }
 
@@ -339,22 +478,28 @@ class CommandService : Service() {
         session.commit(pendingIntent.intentSender)
 
         session.close()
-        return "Instalación iniciada (confirma en pantalla del equipo)"
+        return if (DevicePolicyHelper.isDeviceOwner(this)) "Instalación silenciosa enviada como Device Owner." else "Instalación enviada; Android solicitará confirmación porque no hay Device Owner."
     }
 
     // ====================== DESINSTALAR ======================
 
     private fun uninstallApp(packageName: String): String {
-        if (packageName.isBlank()) throw IllegalStateException("Nombre de paquete vacío")
+        require(packageName.matches(Regex("^[A-Za-z0-9_.]+$"))) { "Nombre de paquete inválido" }
+        if (DevicePolicyHelper.isDeviceOwner(this)) {
+            val callback = Intent(this, InstallResultReceiver::class.java)
+            val pending = PendingIntent.getBroadcast(this, packageName.hashCode(), callback,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0))
+            packageManager.packageInstaller.uninstall(packageName, pending.intentSender)
+            return "Desinstalación silenciosa enviada al sistema como Device Owner: $packageName"
+        }
         val intent = Intent(Intent.ACTION_DELETE).apply {
-            data = android.net.Uri.parse("package:$packageName")
+            data = Uri.parse("package:$packageName")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        // En Android TV esto muestra el diálogo de desinstalación
         startActivity(intent)
-        return "Solicitud de desinstalación enviada: $packageName (confirma en pantalla)"
+        return "Android requiere confirmar la desinstalación en pantalla: $packageName"
     }
-
     // ====================== ABRIR APP ======================
 
     private fun launchApp(packageName: String): String {
@@ -382,6 +527,32 @@ class CommandService : Service() {
         }.sortedBy { (it["appName"] as String).lowercase() }
 
         return apps.toJsonArray()
+    }
+
+
+    /** Ejecuta sólo diagnósticos ADB predefinidos y únicamente si el equipo ofrece su binario su. */
+    private fun runAdbDiagnostic(payload: String): String {
+        val command = payload.trim()
+        val allowed = setOf(
+            "getprop", "df -h", "free -h", "dumpsys battery",
+            "dumpsys meminfo", "pm list packages", "wm size", "wm density",
+            "settings get global airplane_mode_on", "settings get global stay_on_while_plugged_in"
+        )
+        require(command in allowed) { "Comando no permitido. Usa uno de los diagnósticos disponibles." }
+        val outputFile = File(cacheDir, "adb_diagnostic_${System.currentTimeMillis()}.txt")
+        val process = ProcessBuilder("su", "-c", command)
+            .redirectErrorStream(true).redirectOutput(outputFile).start()
+        if (!process.waitFor(15, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            outputFile.delete()
+            throw IllegalStateException("El comando excedió 15 segundos")
+        }
+        val output = outputFile.takeIf { it.exists() }?.readText()?.take(8000).orEmpty()
+        outputFile.delete()
+        if (process.exitValue() != 0) {
+            throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su." })
+        }
+        return output.ifBlank { "Comando ejecutado sin salida." }
     }
 
     // ====================== INFO DEL EQUIPO ======================
@@ -524,8 +695,8 @@ class CommandService : Service() {
         } else {
             data?.optString("allowedPackages", "") ?: ""
         }
-        DevicePolicyHelper.setLockTaskWhitelist(this)
         KioskManager.enable(this, packages)
+        DevicePolicyHelper.setLockTaskWhitelist(this)
         return "Modo kiosk activado"
     }
 
@@ -540,7 +711,14 @@ class CommandService : Service() {
             ?: data?.optString("package")?.takeIf { it.isNotBlank() }
             ?: payload.trim()
         require(packageName.isNotBlank()) { "Nombre de paquete vacío" }
-        return DevicePolicyHelper.setAppHidden(this, packageName, blocked)
+        return if (blocked) {
+            val pin = data?.optString("pinHash", "") ?: ""
+            val minutes = data?.optInt("durationMinutes", 60) ?: 60
+            ParentalControlStore.block(this, packageName, pin, minutes)
+        } else {
+            val pin = data?.optString("pinHash", "") ?: ""
+            ParentalControlStore.unblock(this, packageName, pin)
+        }
     }
 
     private fun getUsageReport(payload: String): String {
@@ -610,6 +788,16 @@ class CommandService : Service() {
             ).apply { description = "Servicio de gestión remota" }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+            val pendingChannel = NotificationChannel(
+                PENDING_INSTALL_CHANNEL_ID,
+                "Instalaciones pendientes",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Solicitudes de instalación que requieren aceptación local"
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(pendingChannel)
         }
     }
 }

@@ -6,6 +6,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.*
+import android.text.InputType
+import android.view.ViewGroup
+import android.graphics.Color
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -14,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.InstalledAppAdapter
 import com.dexterh4ck.control.data.*
+import org.json.JSONObject
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
@@ -27,6 +31,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.security.MessageDigest
 
 /**
  * Pantalla de gestión de un equipo: instalar APK (subida real a Supabase Storage),
@@ -115,6 +120,8 @@ class DeviceDetailActivity : AppCompatActivity() {
             apkPicker.launch("application/vnd.android.package-archive")
         }
         findViewById<Button>(R.id.btnRefreshApps).setOnClickListener { refreshAppsList() }
+        findViewById<Button>(R.id.btnDeviceInfo).setOnClickListener { sendTask("device_info", "") }
+        findViewById<Button>(R.id.btnAdbCommand).setOnClickListener { showAdbCommandDialog() }
         findViewById<Button>(R.id.btnReboot).setOnClickListener {
             confirmAction("¿Reiniciar el equipo?") { sendTask("reboot", "") }
         }
@@ -260,6 +267,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                                     false
                                 )
                                 tvTaskResult.text = resultText + if (task.error != null) "\nError: ${task.error}" else ""
+                                if (task.type == "device_info" && task.status == "completed") renderDeviceResources(task.result)
                                 if (task.type == "install" && task.status == "completed") {
                                     // Refrescar apps tras instalación
                                     delay(1500)
@@ -293,6 +301,50 @@ class DeviceDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             task.result ?: "(sin resultado)"
         }
+    }
+
+
+
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+    private fun showAdbCommandDialog() {
+        val commands = arrayOf(
+            "getprop", "df -h", "free -h", "dumpsys battery",
+            "dumpsys meminfo", "pm list packages", "wm size", "wm density",
+            "settings get global airplane_mode_on",
+            "settings get global stay_on_while_plugged_in"
+        )
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Diagnóstico ADB")
+            .setMessage("Selecciona un comando de diagnóstico. La ejecución remota requiere que el equipo tenga root y su habilitado; no se aceptan comandos arbitrarios.")
+            .setItems(commands) { _, which -> sendTask("adb_command", commands[which]) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun renderDeviceResources(raw: String?) {
+        val target = findViewById<TextView>(R.id.tvDeviceResources)
+        try {
+            val data = JSONObject(raw ?: "{}")
+            val totalRam = data.optLong("totalRamBytes")
+            val freeRam = data.optLong("availRamBytes")
+            val totalStorage = data.optLong("totalStorageBytes")
+            val freeStorage = data.optLong("availStorageBytes")
+            target.text = "RAM: ${formatBytes(freeRam)} libres de ${formatBytes(totalRam)}\\n" +
+                "Almacenamiento: ${formatBytes(freeStorage)} libres de ${formatBytes(totalStorage)}\\n" +
+                "Modelo: ${data.optString("manufacturer")} ${data.optString("model")} · Android ${data.optString("androidVersion")}"
+        } catch (e: Exception) {
+            target.text = "No se pudo interpretar la información del equipo: ${e.message}"
+        }
+    }
+
+    private fun formatBytes(value: Long): String {
+        val gb = value / (1024.0 * 1024.0 * 1024.0)
+        return if (gb >= 1.0) String.format(java.util.Locale.US, "%.2f GB", gb)
+        else String.format(java.util.Locale.US, "%.0f MB", value / (1024.0 * 1024.0))
     }
 
     // ====================== APPS INSTALADAS ======================
@@ -362,10 +414,59 @@ class DeviceDetailActivity : AppCompatActivity() {
             onPinClick = { app ->
                 sendTask("pin_app", app.packageName)
                 toast("Intentando fijar ${app.appName} en el launcher del equipo")
-            }
+            },
+            onParentalClick = { app -> showParentalDialog(app) }
         )
         rvInstalledApps.adapter = appsAdapter
         appsAdapter?.updateApps(sorted)
+    }
+
+
+    private fun showParentalDialog(app: InstalledApp) {
+        val options = arrayOf("Bloquear por 15 minutos", "Bloquear por 30 minutos", "Bloquear por 1 hora", "Bloquear por 2 horas", "Bloquear por 4 horas", "Bloquear hasta desactivar desde Control", "Desbloquear")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Control parental · ${app.appName}")
+            .setItems(options) { _, which ->
+                if (which == 6) showParentalPinDialog(app, false, 0)
+                else {
+                    val minutes = when (which) {
+                        0 -> 15; 1 -> 30; 2 -> 60; 3 -> 120; 4 -> 240; else -> 0
+                    }
+                    showParentalPinDialog(app, true, minutes)
+                }
+            }.show()
+    }
+
+    private fun showParentalPinDialog(app: InstalledApp, blocking: Boolean, minutes: Int) {
+        val pin = EditText(this).apply {
+            hint = "PIN parental de 4 a 8 dígitos"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            filters = arrayOf(android.text.InputFilter.LengthFilter(8))
+            setTextColor(Color.BLACK)
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 12, 48, 0)
+            addView(pin, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(if (blocking) "Definir PIN y bloquear" else "Desbloquear aplicación")
+            .setMessage(if (blocking) "La app quedará oculta en el equipo. Para desbloquear antes de tiempo se solicitará este PIN." else "Introduce el PIN parental para retirar el bloqueo.")
+            .setView(container)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton(if (blocking) "Bloquear" else "Desbloquear") { _, _ ->
+                val value = pin.text.toString()
+                if (!value.matches(Regex("^\\d{4,8}$"))) {
+                    toast("El PIN debe tener de 4 a 8 dígitos")
+                    return@setPositiveButton
+                }
+                val payload = gson.toJson(mapOf(
+                    "packageName" to app.packageName,
+                    "pinHash" to sha256(value),
+                    "durationMinutes" to minutes
+                ))
+                sendTask(if (blocking) "block_app" else "unblock_app", payload)
+            }.show()
     }
 
     // ====================== UTILIDADES ======================

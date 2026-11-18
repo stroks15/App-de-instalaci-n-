@@ -4,89 +4,81 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import com.dexterh4ck.equipos.service.KioskDeviceAdminReceiver
+import com.dexterh4ck.equipos.ui.MainActivity
 
-/**
- * Ayudas para funcionalidades de Device Owner / Device Policy.
- *
- * Para tener bloqueo real de apps (ocultar paquetes) y Lock Task robusto,
- * el agente debe ser Device Owner del equipo. Se configura con ADB:
- *
- *   adb shell dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver
- *
- * (Requiere equipo recién restaurado de fábrica. En Fire Stick funciona igual vía ADB.)
- */
+/** Políticas de administración para equipos Android dedicados. */
 object DevicePolicyHelper {
-
-    private fun dpm(context: Context): DevicePolicyManager =
+    private fun dpm(context: Context) =
         context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
-    private fun adminComponent(context: Context): ComponentName =
+    private fun adminComponent(context: Context) =
         ComponentName(context, KioskDeviceAdminReceiver::class.java)
 
     fun isDeviceOwner(context: Context): Boolean =
-        try {
-            dpm(context).isDeviceOwnerApp(context.packageName)
-        } catch (e: Exception) {
-            false
-        }
+        runCatching { dpm(context).isDeviceOwnerApp(context.packageName) }.getOrDefault(false)
 
     fun isAdminActive(context: Context): Boolean =
-        try {
-            dpm(context).isAdminActive(adminComponent(context))
-        } catch (e: Exception) {
-            false
-        }
+        runCatching { dpm(context).isAdminActive(adminComponent(context)) }.getOrDefault(false)
 
     /**
-     * Oculta (bloquea) o muestra (desbloquea) una app sin desinstalarla.
-     * REQUIERE Device Owner. Devuelve mensaje explicativo.
+     * Configura allowlist de Lock Task y registra MainActivity como Home persistente.
+     * Sólo funciona después de provisionar esta app como Device Owner mediante ADB/QR.
      */
-    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): String {
+    fun configureDedicatedDevice(context: Context): String {
+        if (!isDeviceOwner(context)) {
+            return "Este equipo aún no tiene Device Owner. Instala la app y ejecuta el comando ADB indicado en la guía."
+        }
         return try {
-            if (!isDeviceOwner(context)) {
-                "BLOQUEO NO DISPONIBLE: $packageName. Se requiere modo Device Owner. " +
-                        "Ejecuta en ADB: adb shell dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver " +
-                        "(el equipo debe estar recién restaurado de fábrica)."
-            } else {
-                dpm(context).setApplicationHidden(adminComponent(context), packageName, hidden)
-                if (hidden) "App bloqueada (oculta): $packageName"
-                else "App desbloqueada (visible): $packageName"
+            val manager = dpm(context)
+            val admin = adminComponent(context)
+            manager.setLockTaskPackages(admin, arrayOf(context.packageName))
+            val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
             }
+            manager.addPersistentPreferredActivity(
+                admin,
+                homeFilter,
+                ComponentName(context, MainActivity::class.java)
+            )
+            "Device Owner activo. Kiosk autorizado y Dexterh4ck Equipos registrado como pantalla de inicio."
+        } catch (e: Exception) {
+            "Device Owner detectado, pero no se pudieron aplicar las políticas: ${e.message}"
+        }
+    }
+
+    fun setAppHidden(context: Context, packageName: String, hidden: Boolean): String {
+        if (!isDeviceOwner(context)) {
+            return "BLOQUEO NO DISPONIBLE: se requiere Device Owner. Consulta la guía ADB de Dexterh4ck Equipos."
+        }
+        return try {
+            val changed = dpm(context).setApplicationHidden(adminComponent(context), packageName, hidden)
+            if (!changed) "Android rechazó el cambio de visibilidad para $packageName"
+            else if (hidden) "App bloqueada (oculta): $packageName" else "App desbloqueada (visible): $packageName"
         } catch (e: Exception) {
             "Error bloqueando $packageName: ${e.message}"
         }
     }
 
-    /**
-     * Intenta iniciar Lock Task (anclaje de pantalla) desde una actividad.
-     * Con Device Owner + setLockTaskPackages funciona sin confirmación del usuario.
-     */
     fun startLockTaskIfPermitted(activity: Activity) {
         try {
-            val dpm = dpm(activity)
-            if (dpm.isLockTaskPermitted(activity.packageName)) {
+            val manager = dpm(activity)
+            if (isDeviceOwner(activity) && manager.isLockTaskPermitted(activity.packageName)) {
                 activity.startLockTask()
             }
-        } catch (e: Exception) {
-            // Sin permisos: el pinning clásico requiere confirmación del usuario
-        }
+        } catch (_: Exception) {}
     }
 
     fun stopLockTaskIfActive(activity: Activity) {
-        try {
-            activity.stopLockTask()
-        } catch (e: Exception) {}
+        try { activity.stopLockTask() } catch (_: Exception) {}
     }
 
-    /**
-     * Registra el paquete del agente en la whitelist de Lock Task (requiere Device Owner).
-     */
     fun setLockTaskWhitelist(context: Context) {
-        try {
-            if (isDeviceOwner(context)) {
-                dpm(context).setLockTaskPackages(adminComponent(context), arrayOf(context.packageName))
-            }
-        } catch (e: Exception) {}
+        if (isDeviceOwner(context)) {
+            runCatching { val allowed = (listOf(context.packageName) + KioskManager.allowedPackages(context)).distinct().toTypedArray(); dpm(context).setLockTaskPackages(adminComponent(context), allowed) }
+        }
     }
 }

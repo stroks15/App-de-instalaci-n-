@@ -50,6 +50,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <!-- Pantalla de modo kiosk (bloqueo del equipo) -->
@@ -78,6 +83,11 @@
                     <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Acción explícita para aceptar instalaciones pendientes desde la notificación -->
+        <receiver
+            android:name=".service.PendingInstallActionReceiver"
+            android:exported="false" />
 
         <!-- Receptor del resultado de instalación vía PackageInstaller -->
         <receiver

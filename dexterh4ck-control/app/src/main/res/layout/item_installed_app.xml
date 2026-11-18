@@ -77,6 +77,16 @@
         android:layout_marginEnd="4dp" />
 
     <ImageButton
+        android:id="@+id/btnParentalApp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@android:drawable/ic_lock_lock"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Control parental"
+        android:tint="@color/accent"
+        android:layout_marginEnd="4dp" />
+
+    <ImageButton
         android:id="@+id/btnUninstallApp"
         android:layout_width="40dp"
         android:layout_height="40dp"

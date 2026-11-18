@@ -21,7 +21,8 @@ data class Task(
     val result: String? = null,
     val error: String? = null,
     val created_at: String? = null,
-    val updated_at: String? = null
+    val updated_at: String? = null,
+    val expires_at: String? = null
 )
 
 /**
