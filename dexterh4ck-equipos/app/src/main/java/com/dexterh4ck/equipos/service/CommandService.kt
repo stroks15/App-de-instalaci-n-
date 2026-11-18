@@ -293,8 +293,9 @@ class CommandService : Service() {
     private fun parseServerExpiry(value: String?): Long {
         if (value.isNullOrBlank()) return 0L
         // java.text.SimpleDateFormat's X timezone token is unavailable on some API 21-23 TVs.
-        val normalized = value.replace(Regex("([+-]\\d{2}):(\\d{2})$"), "$1$2")
-            .replace(Regex("Z$"), "+0000")
+        val normalized = value.replace(Regex("([+-]\\d{2}):(\\d{2})$")) { match ->
+            match.groupValues[1] + match.groupValues[2]
+        }.replace(Regex("Z$"), "+0000")
         val formats = listOf("yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ")
         for (pattern in formats) {
             try {
