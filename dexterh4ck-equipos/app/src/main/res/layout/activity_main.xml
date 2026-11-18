@@ -176,6 +176,13 @@
                 android:layout_marginEnd="6dp"
                 android:background="#151F31">
 
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@android:drawable/ic_menu_manage"
+                    android:tint="#8FB8FF"
+                    android:contentDescription="Icono ADB" />
+
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -212,6 +219,13 @@
                 android:padding="14dp"
                 android:layout_marginStart="6dp"
                 android:background="#151F31">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@android:drawable/ic_lock_lock"
+                    android:tint="#8FB8FF"
+                    android:contentDescription="Icono Device Owner" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -259,6 +273,13 @@
             android:padding="16dp"
             android:background="#151F31">
 
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@android:drawable/ic_lock_lock"
+                android:tint="#8FB8FF"
+                android:contentDescription="Icono VPN" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -275,6 +296,14 @@
                 android:textColor="#AAB7CA"
                 android:textSize="13sp"
                 android:layout_marginTop="5dp" />
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginTop="12dp"
+                android:src="@android:drawable/ic_menu_info_details"
+                android:tint="#8FB8FF"
+                android:contentDescription="Icono RAM" />
 
             <TextView
                 android:id="@+id/tvRamValue"
@@ -295,6 +324,14 @@
                 android:backgroundTint="#2459C5"
                 android:layout_marginTop="8dp" />
 
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginTop="12dp"
+                android:src="@android:drawable/ic_menu_save"
+                android:tint="#8FB8FF"
+                android:contentDescription="Icono almacenamiento" />
+
             <TextView
                 android:id="@+id/tvStorageValue"
                 android:layout_width="match_parent"
@@ -303,6 +340,14 @@
                 android:textColor="#DCE7F7"
                 android:textSize="14sp"
                 android:layout_marginTop="12dp" />
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginTop="12dp"
+                android:src="@android:drawable/ic_menu_view"
+                android:tint="#8FB8FF"
+                android:contentDescription="Icono aplicaciones" />
 
             <TextView
                 android:id="@+id/tvAppCount"
