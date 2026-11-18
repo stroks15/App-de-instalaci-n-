@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { hashAgentToken } from '@/lib/agent-auth';
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (!authorizedByToken) {
         const limited = await consumePairingAttempt(db, request, [
           `device:${hardwareId}`,
-          `code:${createHash('sha256').update(pairingCode).digest('hex')}`
         ]);
         if (!limited.allowed) {
           if ('unavailable' in limited) return NextResponse.json({ error: 'Protección de emparejamiento no disponible' }, { status: 503 });
@@ -60,7 +59,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (existing) {
       const limited = await consumePairingAttempt(db, request, [
         `device:${hardwareId}`,
-        `code:${createHash('sha256').update(pairingCode).digest('hex')}`
       ]);
       if (!limited.allowed) {
         if ('unavailable' in limited) return NextResponse.json({ error: 'Protección de emparejamiento no disponible' }, { status: 503 });
