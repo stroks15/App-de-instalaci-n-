@@ -36,6 +36,7 @@ async function provisionGatewayPeer(device: {
       },
       body: JSON.stringify({
         device_id: device.device_id,
+        owner_id: auth.user.id,
         public_key: device.public_key,
         allowed_ip: `${device.assigned_ip.split('/')[0]}/32`,
       }),
