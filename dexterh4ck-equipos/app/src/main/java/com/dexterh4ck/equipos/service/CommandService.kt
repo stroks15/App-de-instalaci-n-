@@ -51,6 +51,10 @@ class CommandService : Service() {
         private const val POLL_INTERVAL = 5_000L
         private const val CONNECT_TIMEOUT = 30L
         private const val READ_TIMEOUT = 60L
+        const val ACTION_INSTALL_RESULT = "com.dexterh4ck.equipos.ACTION_INSTALL_RESULT"
+        const val EXTRA_INSTALL_TASK_ID = "install_task_id"
+        const val EXTRA_INSTALL_STATE = "install_state"
+        const val EXTRA_INSTALL_MESSAGE = "install_message"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -432,7 +436,7 @@ class CommandService : Service() {
                 put("progress", 99)
                 put("message", result)
             }.toString())
-            updateNotification("completed", "install")
+            updateNotification("in_progress", "install")
         } catch (e: Exception) {
             reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
             updateNotification("failed", "install")
