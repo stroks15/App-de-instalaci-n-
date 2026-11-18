@@ -11,7 +11,8 @@ class RemoteDeviceOperations(private val adb: NativeAdbClient) {
         val battery: String,
         val storage: String,
         val model: String,
-        val androidVersion: String
+        val androidVersion: String,
+        val adbLatencyMs: Long?
     )
 
     data class DeviceOwnerCheck(
@@ -25,7 +26,8 @@ class RemoteDeviceOperations(private val adb: NativeAdbClient) {
         val storage = async { adb.shell(ip, "df -h /data") }
         val model = async { adb.shell(ip, "getprop ro.product.model") }
         val version = async { adb.shell(ip, "getprop ro.build.version.release") }
-        Telemetry(battery.await(), storage.await(), model.await(), version.await())
+        val latency = async { adb.pingLatencyMs(ip) }
+        Telemetry(battery.await(), storage.await(), model.await(), version.await(), latency.await())
     }
 
     suspend fun checkDeviceOwnerPrerequisites(ip: String): DeviceOwnerCheck = coroutineScope {
