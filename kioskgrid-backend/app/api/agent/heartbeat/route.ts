@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest): Promise<Response> {
   const auth = await requireAgent(request);
-  if (auth.response || !auth.device) return auth.response;
+  if (auth.response) return auth.response;
+  if (!auth.device) return NextResponse.json({ error: 'Agente no autorizado' }, { status: 401 });
   try {
     const body = await request.json().catch(() => ({}));
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       update.name = name;
       update.device_name = name;
     }
-    const { error } = await db.from('devices').update(update).eq('id', auth.device.id);
+    const { error } = await (db.from('devices') as any).update(update).eq('id', auth.device.id);
     if (error) {
       console.error('Agent heartbeat update failed:', error);
       return NextResponse.json({ error: 'No se pudo actualizar el heartbeat' }, { status: 500 });
