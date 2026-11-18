@@ -91,6 +91,10 @@ class CommandService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification("Dexterh4ck Equipos activo"))
+        if (intent?.action == PendingInstallActionReceiver.ACTION_ACCEPT) {
+            val taskId = intent.getStringExtra(PendingInstallActionReceiver.EXTRA_TASK_ID)
+            if (!taskId.isNullOrBlank()) scope.launch { acceptPendingInstall(taskId) }
+        }
         return START_STICKY
     }
 
@@ -209,6 +213,10 @@ class CommandService : Service() {
     // ====================== EJECUCIÓN DE TAREAS ======================
 
     private suspend fun executeTask(task: Task) {
+        if (task.type == "install" && !DevicePolicyHelper.isDeviceOwner(this)) {
+            queueInstallForUserAcceptance(task)
+            return
+        }
         reportTask(task.id, "in_progress")
         val (resultJson, errorMsg) = when (task.type) {
             "install" -> runCatching { installApp(task.payload) }.fold(
@@ -273,6 +281,97 @@ class CommandService : Service() {
         val finalStatus = if (errorMsg != null) "failed" else "completed"
         reportTask(task.id, finalStatus, result = resultJson, error = errorMsg)
         updateNotification(finalStatus, task.type)
+    }
+
+    private fun pendingInstallPrefs() = getSharedPreferences("pending_user_installs", Context.MODE_PRIVATE)
+
+    private fun pendingInstallNotificationId(taskId: String) = 41000 + (taskId.hashCode() and 0x0fff)
+
+    private suspend fun queueInstallForUserAcceptance(task: Task) {
+        val prefs = pendingInstallPrefs()
+        val key = "task_${task.id}"
+        val existingExpiry = prefs.getLong("${key}_expires", 0L)
+        val expiresAt = if (existingExpiry > 0L) existingExpiry else System.currentTimeMillis() + 48L * 60L * 60L * 1000L
+        prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
+        reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence en 48 horas.")
+        showPendingInstallNotification(task.id, task.payload, expiresAt)
+    }
+
+    private fun showPendingInstallNotification(taskId: String, apkUrl: String, expiresAt: Long) {
+        val notificationId = pendingInstallNotificationId(taskId)
+        val accept = Intent(this, PendingInstallActionReceiver::class.java).apply {
+            action = PendingInstallActionReceiver.ACTION_ACCEPT
+            putExtra(PendingInstallActionReceiver.EXTRA_TASK_ID, taskId)
+        }
+        val acceptPending = PendingIntent.getBroadcast(
+            this, notificationId, accept,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val open = PendingIntent.getActivity(
+            this, notificationId, Intent(this, com.dexterh4ck.equipos.ui.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val remainingHours = ((expiresAt - System.currentTimeMillis()).coerceAtLeast(0L) / 3600000L)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Instalación pendiente de autorización")
+            .setContentText("Acepta instalar la aplicación. Caduca en $remainingHours h.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Android no tiene Device Owner activo. Acepta la instalación desde esta notificación. La solicitud se cancelará automáticamente al cumplir 48 horas."))
+            .setContentIntent(open)
+            .addAction(android.R.drawable.ic_input_add, "Aceptar instalación", acceptPending)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(notificationId, notification)
+    }
+
+    private suspend fun acceptPendingInstall(taskId: String) {
+        val prefs = pendingInstallPrefs()
+        val key = "task_$taskId"
+        val url = prefs.getString("${key}_url", null)
+        val expiry = prefs.getLong("${key}_expires", 0L)
+        if (url.isNullOrBlank()) return
+        if (System.currentTimeMillis() >= expiry) {
+            expirePendingInstall(taskId)
+            return
+        }
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .cancel(pendingInstallNotificationId(taskId))
+        prefs.edit().remove("${key}_url").remove("${key}_expires").apply()
+        reportTask(taskId, "in_progress")
+        try {
+            val result = installApp(url)
+            reportTask(taskId, "completed", result = "\"${escapeJson(result)}\"")
+            updateNotification("completed", "install")
+        } catch (e: Exception) {
+            reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
+            updateNotification("failed", "install")
+        }
+    }
+
+    private suspend fun expirePendingInstall(taskId: String) {
+        val key = "task_$taskId"
+        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").apply()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .cancel(pendingInstallNotificationId(taskId))
+        reportTask(taskId, "expired", error = "Solicitud cancelada: no fue aceptada en 48 horas.")
+    }
+
+    private suspend fun expireOldPendingInstalls() {
+        val prefs = pendingInstallPrefs()
+        val now = System.currentTimeMillis()
+        prefs.all.keys.filter { it.endsWith("_expires") }.forEach { expiryKey ->
+            val expires = prefs.getLong(expiryKey, 0L)
+            val taskId = expiryKey.removePrefix("task_").removeSuffix("_expires")
+            if (expires > 0L && now >= expires) expirePendingInstall(taskId)
+            else {
+                val url = prefs.getString("task_${taskId}_url", null)
+                if (!url.isNullOrBlank()) showPendingInstallNotification(taskId, url, expires)
+            }
+        }
     }
 
     /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
