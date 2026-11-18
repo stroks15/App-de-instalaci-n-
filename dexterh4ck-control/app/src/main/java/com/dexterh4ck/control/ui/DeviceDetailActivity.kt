@@ -481,8 +481,10 @@ class DeviceDetailActivity : AppCompatActivity() {
     private fun showApps(apps: List<InstalledApp>) {
         if (apps.isEmpty()) {
             tvNoApps.visibility = View.VISIBLE
+            selectedPackages = emptySet()
             appsAdapter = null
             rvInstalledApps.adapter = null
+            updateDebloatButton()
             return
         }
         tvNoApps.visibility = View.GONE
