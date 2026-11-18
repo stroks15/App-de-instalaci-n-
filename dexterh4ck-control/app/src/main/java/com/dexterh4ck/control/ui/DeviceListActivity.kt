@@ -6,6 +6,7 @@ import android.widget.EditText
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -55,6 +56,10 @@ class DeviceListActivity : AppCompatActivity() {
         rvDevices.layoutManager = LinearLayoutManager(this)
 
         adapter = DeviceAdapter(emptyList()) { device ->
+            if (device.device_id.isBlank()) {
+                Toast.makeText(this, "El equipo no tiene un identificador válido", Toast.LENGTH_LONG).show()
+                return@DeviceAdapter
+            }
             val intent = Intent(this, DeviceDetailActivity::class.java)
             intent.putExtra("device_id", device.device_id)
             intent.putExtra("device_name", device.name)
@@ -62,14 +67,24 @@ class DeviceListActivity : AppCompatActivity() {
         }
         rvDevices.adapter = adapter
 
-        findViewById<Button>(R.id.btnRefresh).setOnClickListener { loadDevices() }
         findViewById<Button>(R.id.btnPair).setOnClickListener { showPairDialog() }
-        findViewById<Button>(R.id.btnBulk).setOnClickListener {
-            startActivity(Intent(this, BulkManagementActivity::class.java))
-        }
+        findViewById<Button>(R.id.btnMenu).setOnClickListener { showActionsMenu(it) }
 
         loadDevices()
         startAutoRefresh()
+    }
+
+    private fun showActionsMenu(anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menu.add("Actualizar lista").setOnMenuItemClickListener { loadDevices(); true }
+            menu.add("Gestión masiva").setOnMenuItemClickListener {
+                startActivity(Intent(this@DeviceListActivity, BulkManagementActivity::class.java)); true
+            }
+            menu.add("Instalar APK desde GitHub").setOnMenuItemClickListener {
+                startActivity(Intent(this@DeviceListActivity, GithubApkActivity::class.java)); true
+            }
+            show()
+        }
     }
 
     private fun showPairDialog() {
@@ -91,12 +106,16 @@ class DeviceListActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         val response = withContext(Dispatchers.IO) { api.pairDevice(PairDeviceRequest(code)) }
-                        if (response.isSuccessful) { Toast.makeText(this@DeviceListActivity, "Equipo vinculado correctamente", Toast.LENGTH_SHORT).show(); loadDevices() }
-                        else {
+                        if (response.isSuccessful) {
+                            Toast.makeText(this@DeviceListActivity, "Equipo vinculado correctamente", Toast.LENGTH_SHORT).show()
+                            loadDevices()
+                        } else {
                             val detail = response.errorBody()?.string()?.take(180).orEmpty()
                             Toast.makeText(this@DeviceListActivity, "No se pudo vincular (HTTP ${response.code()}): $detail", Toast.LENGTH_LONG).show()
                         }
-                    } catch (e: Exception) { Toast.makeText(this@DeviceListActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@DeviceListActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }.show()
     }
@@ -124,7 +143,7 @@ class DeviceListActivity : AppCompatActivity() {
                         tvEmpty.text = "No hay equipos. Instala Dexterh4ck Equipos en tu TV Box / Fire Stick y configúralo."
                     }
                 } else if (!quiet) {
-                    Toast.makeText(this@DeviceListActivity, "Error al cargar equipos", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@DeviceListActivity, "Error al cargar equipos (HTTP ${response.code()})", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 progressBar.visibility = View.GONE
