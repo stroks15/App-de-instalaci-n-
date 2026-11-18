@@ -302,53 +302,93 @@ class GithubApkActivity : AppCompatActivity() {
         status.text = "Conectando directamente desde GitHub. El APK no se subirá a Supabase."
         showTransferProgress(0, "Preparando descarga directa desde GitHub…")
         lifecycleScope.launch {
+            val taskTargets = linkedMapOf<String, Int>()
+            val progressByTask = mutableMapOf<String, Int>()
             var completed = 0
             var failed = 0
+
+            // Crear primero todas las tareas: ningún equipo debe esperar a que otro acepte su instalación.
             for ((index, id) in deviceIds.withIndex()) {
                 try {
                     val created = withContext(Dispatchers.IO) {
                         api.createTask(TaskRequest(device_id = id, type = "install", payload = apk.url))
                     }
-                    if (!created.isSuccessful || created.body() == null) {
-                        failed++
-                        continue
-                    }
-                    val taskId = created.body()!!.id
-                    var attempts = 0
-                    var terminal = false
-                    while (attempts < 86400 && !terminal) {
-                        delay(2000)
-                        attempts++
+                    if (created.isSuccessful && created.body() != null) {
+                        taskTargets[created.body()!!.id] = index
+                        progressByTask[created.body()!!.id] = 0
+                    } else failed++
+                } catch (_: Exception) { failed++ }
+            }
+
+            if (taskTargets.isEmpty()) {
+                showTransferProgress(0, "No se pudo enviar la instalación a ningún equipo.")
+                status.text = "No se pudieron crear tareas para los equipos seleccionados."
+                return@launch
+            }
+
+            val terminal = mutableSetOf<String>()
+            var attempts = 0
+            while (terminal.size < taskTargets.size && attempts < 86400) {
+                attempts++
+                for ((taskId, index) in taskTargets) {
+                    if (taskId in terminal) continue
+                    try {
                         val response = withContext(Dispatchers.IO) { api.getTask(taskId) }
                         if (!response.isSuccessful) continue
                         val task = response.body()?.task ?: continue
-                        val raw = task.result
                         val progressData = runCatching {
-                            val json = JSONObject(raw ?: "{}")
+                            val json = JSONObject(task.result ?: "{}")
                             val phase = json.optString("phase")
-                            val percent = json.optInt("progress", 0)
+                            val percent = json.optInt("progress", 0).coerceIn(0, 100)
                             val label = when (phase) {
                                 "download" -> "Descargando APK desde GitHub al equipo ${index + 1}/${deviceIds.size}…"
                                 "downloaded" -> "APK descargado en el equipo ${index + 1}/${deviceIds.size}."
-                                "install" -> "Preparando instalación en el equipo ${index + 1}/${deviceIds.size}…"
-                                else -> "Procesando instalación en el equipo ${index + 1}/${deviceIds.size}…"
+                                "install" -> "Instalando APK en el equipo ${index + 1}/${deviceIds.size}…"
+                                "installed" -> "Instalación completada en el equipo ${index + 1}/${deviceIds.size}."
+                                else -> "Esperando respuesta del equipo ${index + 1}/${deviceIds.size}…"
                             }
                             percent to label
                         }.getOrNull()
-                        if (progressData != null) showTransferProgress(progressData.first, progressData.second)
-                        if (task.status == "awaiting_user") showTransferProgress(100, "APK descargado. Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h.")
-                        if (task.status == "completed" || task.status == "done") { completed++; terminal = true }
-                        if (task.status == "failed" || task.status == "expired") { failed++; terminal = true }
-                        status.text = "Equipos completados: $completed · Fallidos: $failed · En proceso: ${deviceIds.size - completed - failed}"
-                    }
-                    if (!terminal) failed++
-                } catch (_: Exception) {
-                    failed++
+                        if (progressData != null) progressByTask[taskId] = progressData.first
+                        if (task.status == "awaiting_user") {
+                            progressByTask[taskId] = 100
+                            showTransferProgress(
+                                progressByTask.values.sum() / taskTargets.size,
+                                "APK descargado. Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h."
+                            )
+                        } else if (progressData != null) {
+                            showTransferProgress(
+                                progressByTask.values.sum() / taskTargets.size,
+                                progressData.second
+                            )
+                        }
+                        if (task.status == "completed" || task.status == "done") {
+                            completed++
+                            terminal.add(taskId)
+                            progressByTask[taskId] = 100
+                        } else if (task.status == "failed" || task.status == "expired") {
+                            failed++
+                            terminal.add(taskId)
+                            progressByTask[taskId] = 100
+                        }
+                    } catch (_: Exception) { }
                 }
+                val average = progressByTask.values.sum() / taskTargets.size
+                showTransferProgress(
+                    average,
+                    "Progreso global: $completed completados · $failed fallidos · ${taskTargets.size - terminal.size} pendientes."
+                )
+                status.text = "Tareas enviadas a ${taskTargets.size} equipos. Completados: $completed · Fallidos: $failed."
+                delay(2000)
             }
-            showTransferProgress(if (failed == 0) 100 else transferRing.progress, "Proceso finalizado: $completed completados · $failed fallidos.")
-            status.text = "Instalación terminada. Completados: $completed · Fallidos: $failed. Los APK públicos de GitHub se descargan directamente en cada equipo, sin pasar por la nube de KioskGrid."
-            toast("Completados: $completed · Fallidos: $failed")
+
+            val pending = taskTargets.size - terminal.size
+            showTransferProgress(
+                if (pending == 0) 100 else progressByTask.values.sum() / taskTargets.size,
+                "Proceso: $completed completados · $failed fallidos · $pending pendientes."
+            )
+            status.text = "Instalación distribuida a todos los equipos. Completados: $completed · Fallidos: $failed · Pendientes: $pending. Los APK públicos de GitHub se descargan directamente en cada TV, sin subirlos a la nube de KioskGrid."
+            toast("Completados: $completed · Fallidos: $failed · Pendientes: $pending")
         }
     }
 
