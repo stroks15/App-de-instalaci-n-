@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -40,6 +41,29 @@ def save_state(state):
     temporary.write_text(json.dumps(state, indent=2))
     os.chmod(temporary, 0o600)
     temporary.replace(STATE_FILE)
+
+
+def sync_firewall(state):
+    # Isolate owners on the shared tunnel. Only peers belonging to the same
+    # Supabase account may forward traffic to each other.
+    chain = "KIOSKGRID_WG"
+    try:
+        run("iptables", "-N", chain)
+    except subprocess.CalledProcessError:
+        pass
+    run("iptables", "-F", chain)
+    try:
+        run("iptables", "-C", "FORWARD", "-i", INTERFACE, "-o", INTERFACE, "-j", chain)
+    except subprocess.CalledProcessError:
+        run("iptables", "-I", "FORWARD", "1", "-i", INTERFACE, "-o", INTERFACE, "-j", chain)
+
+    peers = list(state.values())
+    for index, source in enumerate(peers):
+        for target in peers[index + 1:]:
+            if source["owner_id"] == target["owner_id"]:
+                run("iptables", "-A", chain, "-s", source["allowed_ip"], "-d", target["allowed_ip"], "-j", "ACCEPT")
+                run("iptables", "-A", chain, "-s", target["allowed_ip"], "-d", source["allowed_ip"], "-j", "ACCEPT")
+    run("iptables", "-A", chain, "-j", "DROP")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -85,6 +109,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
             device_id = str(body.get("device_id", ""))
             public_key = str(body.get("public_key", ""))
+            owner_id = str(body.get("owner_id", ""))
+            uuid.UUID(owner_id)
             allowed_ip = ipaddress.ip_interface(str(body.get("allowed_ip", "")))
             decoded = base64.b64decode(public_key, validate=True)
             if not DEVICE_RE.fullmatch(device_id) or len(decoded) != 32:
@@ -96,13 +122,18 @@ class Handler(BaseHTTPRequestHandler):
 
             with LOCK:
                 state = load_state()
-                old_key = state.get(device_id)
-                if old_key and old_key != public_key:
-                    run("wg", "set", INTERFACE, "peer", old_key, "remove")
+                old_peer = state.get(device_id)
+                if old_peer and old_peer["public_key"] != public_key:
+                    run("wg", "set", INTERFACE, "peer", old_peer["public_key"], "remove")
                 run("wg", "set", INTERFACE, "peer", public_key,
                     "allowed-ips", str(allowed_ip))
-                state[device_id] = public_key
+                state[device_id] = {
+                    "public_key": public_key,
+                    "allowed_ip": str(allowed_ip),
+                    "owner_id": owner_id,
+                }
                 save_state(state)
+                sync_firewall(state)
                 # Persist dynamic peer changes to wg0.conf when wg-quick is used.
                 run("wg-quick", "save", INTERFACE)
             self.respond(200, {"ok": True, "device_id": device_id, "allowed_ip": str(allowed_ip)})
@@ -125,12 +156,13 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with LOCK:
                 state = load_state()
-                public_key = state.pop(device_id, None)
-                if public_key:
-                    run("wg", "set", INTERFACE, "peer", public_key, "remove")
+                peer = state.pop(device_id, None)
+                if peer:
+                    run("wg", "set", INTERFACE, "peer", peer["public_key"], "remove")
                     save_state(state)
+                    sync_firewall(state)
                     run("wg-quick", "save", INTERFACE)
-            self.respond(200, {"ok": True, "removed": bool(public_key)})
+            self.respond(200, {"ok": True, "removed": bool(peer)})
         except subprocess.CalledProcessError as error:
             self.respond(502, {"error": "wireguard_command_failed", "detail": error.stderr[-500:]})
         except Exception:
