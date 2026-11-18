@@ -78,7 +78,7 @@ object DevicePolicyHelper {
 
     fun setLockTaskWhitelist(context: Context) {
         if (isDeviceOwner(context)) {
-            runCatching { dpm(context).setLockTaskPackages(adminComponent(context), arrayOf(context.packageName)) }
+            runCatching { val allowed = (listOf(context.packageName) + KioskManager.allowedPackages(context)).distinct().toTypedArray(); dpm(context).setLockTaskPackages(adminComponent(context), allowed) }
         }
     }
 }
