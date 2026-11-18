@@ -62,6 +62,7 @@ class CommandService : Service() {
     @Volatile private var lastRegistrationAt = 0L
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
+    private var agentWakeLock: PowerManager.WakeLock? = null
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val outgoing = chain.request()
@@ -97,6 +98,7 @@ class CommandService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification("Dexterh4ck Equipos activo"))
+        acquireAgentWakeLock()
         if (intent?.action == PendingInstallActionReceiver.ACTION_ACCEPT) {
             val taskId = intent.getStringExtra(PendingInstallActionReceiver.EXTRA_TASK_ID)
             if (!taskId.isNullOrBlank()) scope.launch { acceptPendingInstall(taskId) }
@@ -113,8 +115,20 @@ class CommandService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        super.onDestroy()
+        runCatching { if (agentWakeLock?.isHeld == true) agentWakeLock?.release() }
+        agentWakeLock = null
         scope.cancel()
+        super.onDestroy()
+    }
+
+    /** Mantiene CPU despierta para el heartbeat del TV/Box mientras el servicio foreground está activo. */
+    private fun acquireAgentWakeLock() {
+        if (agentWakeLock?.isHeld == true) return
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        agentWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:AgentHeartbeat").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
     }
 
     // ====================== CONFIGURACIÓN ======================
