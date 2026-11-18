@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getSupabase } from './supabase';
+import { getSupabase, getSupabaseAdmin } from './supabase';
 
 // Coupon types
 export type CouponType = 'percentage' | 'fixed' | 'permanent';
@@ -22,7 +22,7 @@ export interface Coupon {
 
 // Get all coupons
 export async function getCoupons(): Promise<Coupon[]> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from('coupons').select('*');
   if (error) throw error;
   return data || [];
@@ -30,7 +30,7 @@ export async function getCoupons(): Promise<Coupon[]> {
 
 // Get a specific coupon by name
 export async function getCouponByName(name: string): Promise<Coupon | null> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('coupons')
     .select('*')
@@ -42,7 +42,7 @@ export async function getCouponByName(name: string): Promise<Coupon | null> {
 
 // Create a new coupon
 export async function createCoupon(couponData: Partial<Coupon>): Promise<Coupon | null> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   const { data, error } = await (supabase.from('coupons') as any).insert([couponData]).select().single();
   if (error) throw error;
   return data;
@@ -50,7 +50,7 @@ export async function createCoupon(couponData: Partial<Coupon>): Promise<Coupon 
 
 // Update a coupon
 export async function updateCoupon(id: string, updates: Partial<Coupon>): Promise<Coupon | null> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   const { data, error } = await (supabase.from('coupons') as any).update(updates).eq('id', id).select().single();
   if (error) throw error;
   return data;
@@ -58,7 +58,7 @@ export async function updateCoupon(id: string, updates: Partial<Coupon>): Promis
 
 // Delete a coupon
 export async function deleteCoupon(id: string): Promise<boolean> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   const { error } = await (supabase.from('coupons') as any).delete().eq('id', id);
   return !error;
 }
@@ -123,7 +123,7 @@ export async function applyCoupon(code: string): Promise<{ discount: number; typ
 
 // Increment coupon usage
 export async function incrementCouponUsage(couponId: string): Promise<boolean> {
-  const supabase = await getSupabase();
+  const supabase = getSupabaseAdmin();
   // First get current usage, then increment
   const { data, error: fetchError } = await (supabase.from('coupons') as any)
     .select('current_uses')
