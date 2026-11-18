@@ -197,8 +197,8 @@ class NetBirdToolsActivity : ComponentActivity() {
         lifecycleScope.launch {
             var file: File? = null
             try {
-                file = withContext(Dispatchers.IO) { copyToCache(uri) }
-                val selectedFile = file
+                val selectedFile = withContext(Dispatchers.IO) { copyToCache(uri) }
+                file = selectedFile
                 val targets = peers()
                 if (targets.isEmpty()) throw IllegalStateException("No hay IPs NetBird válidas.")
                 val results = operations.runOnDevices(targets) { ip ->
