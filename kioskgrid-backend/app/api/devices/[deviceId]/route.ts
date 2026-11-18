@@ -11,7 +11,7 @@ export async function GET(request:NextRequest,{params}:C){
  const a=await requireUser(request);if(a.response||!a.user)return a.response;
  const db=getSupabaseAdmin(),d=await findOwned(db,params.deviceId,a.user.id);
  if(!d)return NextResponse.json({error:'Equipo no encontrado'},{status:404});
- const {data:tasks}=await (db.from('tasks') as any).select('*').eq('device_id',d.id).order('created_at',{ascending:false}).limit(20);
+ const {data:tasks}=await ((db.from('tasks') as any) as any).select('*').eq('device_id',d.id).order('created_at',{ascending:false}).limit(20);
  const appTask=(tasks??[]).find((t:any)=>t.type==='list_apps'&&t.status==='done');
  let apps:any[]=[];if(appTask?.result){try{apps=JSON.parse(appTask.result)}catch{apps=[]}}
  return NextResponse.json({device:d,tasks:tasks??[],installed_apps:apps,apps_updated_at:appTask?.updated_at??null});
