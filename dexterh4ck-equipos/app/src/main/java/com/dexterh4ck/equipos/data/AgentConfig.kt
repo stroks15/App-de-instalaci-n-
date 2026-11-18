@@ -18,6 +18,6 @@ data class AgentConfig(
         const val KEY_SERVER_URL = "server_url"
 
         /** URL del backend Next.js desplegado en Vercel. */
-        const val DEFAULT_SERVER_URL = "https://kioskgrid-backend-stroks15s-projects.vercel.app"
+        const val DEFAULT_SERVER_URL = "https://kioskgrid-backend.vercel.app"
     }
 }
