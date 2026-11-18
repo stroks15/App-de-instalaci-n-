@@ -82,11 +82,6 @@ class KioskModeActivity : AppCompatActivity() {
         DevicePolicyHelper.startLockTaskIfPermitted(this)
     }
 
-    override fun onPause() {
-        super.onPause()
-        DevicePolicyHelper.stopLockTaskIfActive(this)
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
