@@ -260,7 +260,7 @@ class CommandService : Service() {
                 { "null" to it.message }
             )
             "adb_command" -> runCatching { runAdbDiagnostic(task.payload) }.fold(
-                { "\"\${escapeJson(it)}\"" to null },
+                { "\"${escapeJson(it)}\"" to null },
                 { "null" to it.message }
             )
             "reboot" -> runCatching { rebootDevice() }.fold(
@@ -400,12 +400,16 @@ class CommandService : Service() {
             "settings get global airplane_mode_on", "settings get global stay_on_while_plugged_in"
         )
         require(command in allowed) { "Comando no permitido. Usa uno de los diagnósticos disponibles." }
-        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+        val outputFile = File(cacheDir, "adb_diagnostic_${System.currentTimeMillis()}.txt")
+        val process = ProcessBuilder("su", "-c", command)
+            .redirectErrorStream(true).redirectOutput(outputFile).start()
         if (!process.waitFor(15, TimeUnit.SECONDS)) {
             process.destroyForcibly()
+            outputFile.delete()
             throw IllegalStateException("El comando excedió 15 segundos")
         }
-        val output = process.inputStream.bufferedReader().use { it.readText() }.take(8000)
+        val output = outputFile.takeIf { it.exists() }?.readText()?.take(8000).orEmpty()
+        outputFile.delete()
         if (process.exitValue() != 0) {
             throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su." })
         }
