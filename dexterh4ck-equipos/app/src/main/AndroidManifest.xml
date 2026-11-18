@@ -84,6 +84,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Acción explícita para aceptar instalaciones pendientes desde la notificación -->
+        <receiver
+            android:name=".service.PendingInstallActionReceiver"
+            android:exported="false" />
+
         <!-- Receptor del resultado de instalación vía PackageInstaller -->
         <receiver
             android:name=".service.InstallResultReceiver"
