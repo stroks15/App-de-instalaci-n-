@@ -31,6 +31,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.security.MessageDigest
 
 /**
  * Pantalla de gestión de un equipo: instalar APK (subida real a Supabase Storage),
@@ -304,6 +305,11 @@ class DeviceDetailActivity : AppCompatActivity() {
 
 
 
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
     private fun showAdbCommandDialog() {
         val commands = arrayOf(
             "getprop", "df -h", "free -h", "dumpsys battery",
@@ -456,7 +462,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 val payload = gson.toJson(mapOf(
                     "packageName" to app.packageName,
-                    "pin" to value,
+                    "pinHash" to sha256(value),
                     "durationMinutes" to minutes
                 ))
                 sendTask(if (blocking) "block_app" else "unblock_app", payload)
