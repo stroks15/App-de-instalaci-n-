@@ -4,12 +4,9 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.VpnService
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import android.util.Log
-import com.dexterh4ck.equipos.service.KioskDeviceAdminReceiver
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
@@ -118,8 +115,9 @@ class NetBirdProvisioner(private val context: Context) {
 
     /** Opens the system battery-optimization screen; Android does not allow silently whitelisting another app. */
     fun openBatteryOptimizationSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(NETBIRD_PACKAGE)) {
+        if (pm.isIgnoringBatteryOptimizations(NETBIRD_PACKAGE)) {
             return true
         }
         return runCatching {
