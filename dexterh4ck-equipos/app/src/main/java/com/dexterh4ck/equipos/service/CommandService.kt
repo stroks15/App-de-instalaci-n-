@@ -66,7 +66,6 @@ class CommandService : Service() {
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
     private var agentWakeLock: PowerManager.WakeLock? = null
-    private var vpnTunnelManager: WireGuardTunnelManager? = null
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val outgoing = chain.request()
@@ -191,8 +190,7 @@ class CommandService : Service() {
                     AllowedIPs = 10.88.0.0/16
                     PersistentKeepalive = 25
                 """.trimIndent()
-                vpnTunnelManager = WireGuardTunnelManager(this@CommandService)
-                vpnTunnelManager!!.connect(wireGuardConfig)
+                WireGuardTunnelManager.connect(this@CommandService, wireGuardConfig)
                 VpnHealthServer.start(this@CommandService, ip)
                 Log.i(TAG, "WireGuard tunnel restored for $ip")
             }.onFailure {
