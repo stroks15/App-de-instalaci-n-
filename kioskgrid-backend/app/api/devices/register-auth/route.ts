@@ -48,6 +48,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           headers: { 'content-type': 'application/json', authorization: `Bearer ${managerToken}` },
           body: JSON.stringify({
             device_id: device.device_id,
+            owner_id: auth.user.id,
             public_key: device.public_key,
             allowed_ip: `${String(device.assigned_ip).split('/')[0]}/32`,
           }),
