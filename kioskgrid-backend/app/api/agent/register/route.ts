@@ -13,7 +13,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const hardwareId = String(body.hardware_id || body.device_id || '').trim().slice(0, 128);
     const pairingCode = String(body.pairing_code || '').trim().toUpperCase();
     const name = String(body.name || 'Equipo TV').trim().slice(0, 80);
-    if (!hardwareId || !/^(?:[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}|[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8})$/.test(pairingCode)) {
+    if (!hardwareId || (pairingCode && !/^(?:[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}|[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8})$/.test(pairingCode))) {
       return NextResponse.json({ error: 'Identificador o código de vinculación inválido' }, { status: 400 });
     }
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           return pairingRateLimitResponse(limited.retryAfterSeconds);
         }
       }
-      const codeIsCurrent = !existing.owner_id &&
+      const codeIsCurrent = !existing.owner_id && !!pairingCode &&
         pairingCode === existing.pairing_code &&
         !!existing.pairing_expires_at &&
         new Date(existing.pairing_expires_at).getTime() > now.getTime();
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         if ('unavailable' in limited) return NextResponse.json({ error: 'Protección de emparejamiento no disponible' }, { status: 503 });
         return pairingRateLimitResponse(limited.retryAfterSeconds);
       }
-      const current = existing.pairing_code === pairingCode &&
+      const current = !!pairingCode && existing.pairing_code === pairingCode &&
         !!existing.pairing_expires_at &&
         new Date(existing.pairing_expires_at).getTime() > now.getTime();
       if (!current) return NextResponse.json({ error: 'El código visible no coincide o ha expirado' }, { status: 401 });
@@ -76,6 +76,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       }).eq('id', existing.id).select('id,device_id,name,status,last_seen,owner_id,pairing_expires_at').single();
       if (error) throw error;
       return NextResponse.json({ device: data, agent_token: recoveredToken, token_rotated: true });
+    }
+
+    if (!pairingCode) {
+      return NextResponse.json({ error: 'El primer registro requiere inicio de sesión autenticado.' }, { status: 401 });
     }
 
     const token = randomBytes(32).toString('base64url');
