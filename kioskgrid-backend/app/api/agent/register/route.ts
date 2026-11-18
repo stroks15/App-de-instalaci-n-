@@ -11,7 +11,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const hardwareId = String(body.hardware_id || body.device_id || '').trim().slice(0, 128);
     const pairingCode = String(body.pairing_code || '').trim().toUpperCase();
     const name = String(body.name || 'Equipo TV').trim().slice(0, 80);
-    if (!hardwareId || !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}$/.test(pairingCode)) {
+    if (!hardwareId || !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(pairingCode)) {
       return NextResponse.json({ error: 'Identificador o código de vinculación inválido' }, { status: 400 });
     }
 
