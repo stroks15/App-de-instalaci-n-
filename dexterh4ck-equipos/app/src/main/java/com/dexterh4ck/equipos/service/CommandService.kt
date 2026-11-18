@@ -153,8 +153,10 @@ class CommandService : Service() {
                 }
                 val token = response.body()?.agent_token
                 if (!token.isNullOrBlank()) {
-                    getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
-                        .edit().putString(AgentConfig.KEY_AGENT_TOKEN, token).apply()
+                    if (!AgentTokenStore.saveToken(this@CommandService, token)) {
+                        Log.e(TAG, "No se pudo guardar la credencial de forma cifrada")
+                        return@launch
+                    }
                 }
                 Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
             } catch (e: Exception) {
@@ -180,8 +182,7 @@ class CommandService : Service() {
 
     private suspend fun checkForCommands() {
         if (config.deviceId.isEmpty()) return
-        val token = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
-            .getString(AgentConfig.KEY_AGENT_TOKEN, null)
+        val token = AgentTokenStore.getToken(this)
         if (token.isNullOrBlank()) {
             registerDevice()
             return
