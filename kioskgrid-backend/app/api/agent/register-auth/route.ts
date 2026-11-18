@@ -17,7 +17,7 @@ async function provisionGatewayPeer(device: {
   device_id: string;
   public_key: string | null;
   assigned_ip: string;
-}): Promise<GatewayResult> {
+}, ownerId: string): Promise<GatewayResult> {
   const managerUrl = process.env.WG_MANAGER_URL;
   const managerToken = process.env.WG_MANAGER_TOKEN;
   const endpoint = process.env.WG_ENDPOINT;
@@ -36,7 +36,7 @@ async function provisionGatewayPeer(device: {
       },
       body: JSON.stringify({
         device_id: device.device_id,
-        owner_id: auth.user.id,
+        owner_id: ownerId,
         public_key: device.public_key,
         allowed_ip: `${device.assigned_ip.split('/')[0]}/32`,
       }),
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const publicKey = typeof body.public_key === 'string' ? body.public_key.trim() : null;
 
     if (!deviceId || !deviceName || deviceName.length > 80 ||
-        !['agent', 'control'].includes(role) ||
+        role !== 'agent' ||
         (publicKey !== null && !/^[A-Za-z0-9+/]{43}=$/.test(publicKey))) {
       return NextResponse.json({ error: 'Datos de dispositivo inválidos' }, { status: 400 });
     }
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       device_id: device.device_id,
       public_key: device.public_key,
       assigned_ip: device.assigned_ip,
-    });
+    }, auth.user.id);
 
     await db.from('devices').update({
       vpn_enabled: vpn.enabled,
