@@ -46,7 +46,11 @@ object AgentAuthClient {
             .putString(AgentConfig.KEY_DEVICE_ID, deviceId).putString(AgentConfig.KEY_DEVICE_NAME, deviceName.trim())
             .putString(AgentConfig.KEY_SERVER_URL, backendUrl.trimEnd('/')).putBoolean(AgentConfig.KEY_IS_PAIRED, true)
             .putString("account_user_id", session.optString("user_id"))
-            .putString("account_email", email.trim()).putString("assigned_vpn_ip", device?.optString("assigned_ip"))
+            .putString("account_email", email.trim())
+            .putString("assigned_vpn_ip", vpn?.optString("assigned_ip") ?: device?.optString("assigned_ip"))
+            .putString("vpn_endpoint", vpn?.optString("endpoint"))
+            .putString("vpn_server_public_key", vpn?.optString("server_public_key"))
+            .putBoolean("vpn_enabled", vpn?.optBoolean("enabled") == true)
             .apply()
         return registration
     }
