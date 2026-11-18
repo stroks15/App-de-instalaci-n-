@@ -1,106 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { requireUser } from '@/lib/request-auth';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Resuelve los dispositivos destino: uno, varios o todos.
- */
-async function resolveDeviceIds(body: any): Promise<string[]> {
-  const supabase = getSupabaseAdmin();
-  if (body.all === true) {
-    const { data } = await supabase.from('devices').select('device_id');
-    return (data || []).map((d: any) => d.device_id);
-  }
-  if (Array.isArray(body.deviceIds) && body.deviceIds.length > 0) {
-    return body.deviceIds;
-  }
-  if (body.deviceId) {
-    return [body.deviceId];
-  }
-  return [];
+async function resolveDeviceIds(body: any, ownerId: string): Promise<string[]> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await (db.from('devices') as any).select('id,device_id').eq('owner_id', ownerId);
+  if (error) throw error;
+  const owned = data ?? [];
+  if (body.all === true) return owned.map((d: any) => d.id);
+  const refs = Array.isArray(body.deviceIds) ? body.deviceIds : body.deviceId ? [body.deviceId] : [];
+  if (!refs.length) return [];
+  const selected = owned.filter((d: any) => refs.includes(d.id) || refs.includes(d.device_id));
+  if (selected.length !== new Set(refs).size) throw new Error('Uno o más equipos no pertenecen a esta cuenta');
+  return selected.map((d: any) => d.id);
 }
 
-/**
- * POST /api/notify
- * Envía una notificación push in-band a un equipo o a todos.
- * Body: { title, body, deviceId? | deviceIds? | all? }
- *
- * Nota: Fire OS (Fire Stick) NO tiene Google Play Services, por lo que FCM
- * no funciona ahí. Esta notificación "in-band" viaja por la tabla de tareas
- * y el agente la muestra como notificación local + overlay en TV (latencia ~5s).
- */
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth.response || !auth.user) return auth.response;
   try {
     const body = await request.json();
-    const { title, body: message } = body;
+    const title = typeof body.title === 'string' ? body.title.trim().slice(0, 120) : '';
+    const message = typeof body.body === 'string' ? body.body.trim().slice(0, 1000) : '';
+    if (!title || !message) return NextResponse.json({ error: 'title y body son requeridos' }, { status: 400 });
+    const deviceIds = await resolveDeviceIds(body, auth.user.id);
+    if (!deviceIds.length) return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
 
-    if (!title || !message) {
-      return NextResponse.json({ error: 'title y body son requeridos' }, { status: 400 });
-    }
-
-    const deviceIds = await resolveDeviceIds(body);
-    if (deviceIds.length === 0) {
-      return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
-    }
-
-    const supabase = getSupabaseAdmin();
+    const db = getSupabaseAdmin();
     const now = new Date().toISOString();
     const payload = JSON.stringify({ title, body: message });
-
-    // Crear una tarea notify por cada dispositivo
     const rows = deviceIds.map((deviceId: string) => ({
-      device_id: deviceId,
-      type: 'notify',
-      payload,
-      status: 'queued',
-      created_at: now,
-      updated_at: now,
+      device_id: deviceId, type: 'notify', payload, status: 'queued',
+      created_at: now, updated_at: now
     }));
-
-    const { error: taskError } = await (supabase.from('tasks') as any).insert(rows);
-    if (taskError) throw taskError;
-
-    // Historial en tabla notifications
-    const notifRows = deviceIds.map((deviceId: string) => ({
-      device_id: deviceId,
-      title,
-      body: message,
-      status: 'sent',
-      created_at: now,
-    }));
-    await (supabase.from('notifications') as any).insert(notifRows);
-
-    return NextResponse.json({
-      sent: deviceIds.length,
-      devices: deviceIds,
-      title,
-      body: message,
-    }, { status: 201 });
+    const { error } = await (db.from('tasks') as any).insert(rows);
+    if (error) throw error;
+    await (db.from('notifications') as any).insert(deviceIds.map((deviceId: string) => ({
+      device_id: deviceId, owner_id: auth.user!.id, title, body: message, status: 'sent', created_at: now
+    })));
+    return NextResponse.json({ sent: deviceIds.length, title, body: message }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error?.message || 'No se pudo enviar la notificación';
+    return NextResponse.json({ error: message }, { status: message.includes('pertenecen') ? 403 : 500 });
   }
 }
 
-/**
- * GET /api/notify
- * Historial de notificaciones enviadas.
- */
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-    return NextResponse.json({ notifications: data || [] });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const auth = await requireUser(request);
+  if (auth.response || !auth.user) return auth.response;
+  const limit = Math.min(Math.max(Number(new URL(request.url).searchParams.get('limit') || 50) || 50, 1), 100);
+  const db = getSupabaseAdmin();
+  const { data: devices, error: deviceError } = await (db.from('devices') as any).select('id').eq('owner_id', auth.user.id);
+  if (deviceError) return NextResponse.json({ error: 'No se pudieron consultar los equipos' }, { status: 500 });
+  const ids = (devices ?? []).map((d: any) => d.id);
+  if (!ids.length) return NextResponse.json({ notifications: [] });
+  const { data, error } = await (db.from('notifications') as any).select('*').in('device_id', ids)
+    .order('created_at', { ascending: false }).limit(limit);
+  if (error) return NextResponse.json({ error: 'No se pudo consultar el historial' }, { status: 500 });
+  return NextResponse.json({ notifications: data ?? [] });
 }
