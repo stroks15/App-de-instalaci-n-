@@ -12,7 +12,10 @@ data class Device(
     val app_version: String = "1.0.0",
     val status: String = "offline",
     val last_seen: String? = null,
-    val created_at: String? = null
+    val created_at: String? = null,
+    val assigned_ip: String? = null,
+    val vpn_enabled: Boolean = false,
+    val vpn_status: String? = null
 ) {
     fun isOnline(): Boolean = status == "online"
     fun isBusy(): Boolean = status == "busy"
