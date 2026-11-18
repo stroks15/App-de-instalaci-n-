@@ -17,7 +17,7 @@ SET user_id = COALESCE(user_id, owner_id),
 WHERE user_id IS NULL OR device_name IS NULL;
 
 CREATE SEQUENCE IF NOT EXISTS public.kioskgrid_vpn_ip_seq
-  AS bigint MINVALUE 2 MAXVALUE 65535 START WITH 2 INCREMENT BY 1 NO CYCLE;
+  AS bigint MINVALUE 2 MAXVALUE 65534 START WITH 2 INCREMENT BY 1 NO CYCLE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS devices_assigned_ip_unique
   ON public.devices(assigned_ip) WHERE assigned_ip IS NOT NULL;
