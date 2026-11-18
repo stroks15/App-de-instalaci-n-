@@ -1,6 +1,8 @@
 package com.dexterh4ck.control.ui
 
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
 import android.app.AlertDialog
 import android.widget.EditText
 import android.os.Bundle
@@ -34,6 +36,7 @@ class DeviceListActivity : AppCompatActivity() {
     private lateinit var adapter: DeviceAdapter
     private lateinit var progressBar: ProgressBar
     private lateinit var tvEmpty: TextView
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +66,24 @@ class DeviceListActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnMenu).setOnClickListener { showActionsMenu(it) }
         loadDevices()
         startAutoRefresh()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                runOnUiThread { loadDevices(quiet = true) }
+            }
+        }
+        runCatching { manager.registerDefaultNetworkCallback(networkCallback!!) }
+    }
+
+    override fun onStop() {
+        val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        networkCallback?.let { callback -> runCatching { manager.unregisterNetworkCallback(callback) } }
+        networkCallback = null
+        super.onStop()
     }
 
     private fun showActionsMenu(anchor: View) {
