@@ -11,8 +11,8 @@ export async function GET(request: NextRequest, { params }: Context) {
   if (auth.response || !auth.user) return auth.response;
 
   const db = getSupabaseAdmin();
-  const { data: device, error: deviceError } = await db
-    .from('devices') as any.select('id').eq('id', params.deviceId)
+  const { data: device, error: deviceError } = await (db.from('devices') as any)
+    .select('id').eq('id', params.deviceId)
     .eq('owner_id', auth.user.id).maybeSingle();
   if (deviceError) return NextResponse.json({ error: 'No se pudo verificar el equipo' }, { status: 500 });
   if (!device) return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
@@ -30,8 +30,8 @@ export async function POST(request: NextRequest, { params }: Context) {
   if (auth.response || !auth.user) return auth.response;
 
   const db = getSupabaseAdmin();
-  const { data: device, error: deviceError } = await db
-    .from('devices') as any.select('id,owner_id,status').eq('id', params.deviceId)
+  const { data: device, error: deviceError } = await (db.from('devices') as any)
+    .select('id,owner_id,status').eq('id', params.deviceId)
     .eq('owner_id', auth.user.id).maybeSingle();
   if (deviceError) return NextResponse.json({ error: 'No se pudo verificar el equipo' }, { status: 500 });
   if (!device) return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
