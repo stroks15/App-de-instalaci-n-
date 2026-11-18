@@ -22,7 +22,7 @@ class InstalledAppAdapter(
     private val onSelectionChanged: (Set<String>) -> Unit
 ) : RecyclerView.Adapter<InstalledAppAdapter.AppViewHolder>() {
 
-    private val allApps = apps.toList()
+    private var allApps = apps.toList()
     private var visibleApps = apps.toList()
     private val selectedPackages = linkedSetOf<String>()
     private var query = ""
@@ -110,7 +110,7 @@ class InstalledAppAdapter(
     }
 
     fun updateApps(newApps: List<InstalledApp>) {
-        // Preserve selected package IDs when a refresh returns the same apps.
+        allApps = newApps.toList()
         selectedPackages.retainAll(newApps.map { it.packageName }.toSet())
         filter(query, filter)
     }
