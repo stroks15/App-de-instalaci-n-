@@ -21,7 +21,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       .eq('hardware_id', hardwareId).maybeSingle();
     if (lookupError) throw lookupError;
 
-    const bearer = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '').trim() || '';
+    const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
     if (existing?.agent_key_hash) {
       const authorizedByToken = !!bearer && hashAgentToken(bearer) === existing.agent_key_hash;
       const authorizedByVisiblePairingCode = !existing.owner_id && pairingCode === existing.pairing_code;
