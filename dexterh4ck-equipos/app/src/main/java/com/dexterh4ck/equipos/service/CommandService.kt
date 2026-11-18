@@ -58,8 +58,7 @@ class CommandService : Service() {
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val outgoing = chain.request()
-            val token = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
-                .getString(AgentConfig.KEY_AGENT_TOKEN, null)
+            val token = AgentTokenStore.getToken(this@CommandService)
             val backendHost = config.serverUrl.toHttpUrlOrNull()?.host
             val request = outgoing.newBuilder().apply {
                 // Never leak the per-device bearer token to APK/CDN URLs or any other host.
@@ -136,6 +135,7 @@ class CommandService : Service() {
 
     private fun registerDevice() {
         if (!registrationInProgress.compareAndSet(false, true)) return
+        lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
                 val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
