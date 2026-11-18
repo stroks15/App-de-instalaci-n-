@@ -30,6 +30,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Servicio en segundo plano de Dexterh4ck Equipos.
@@ -50,6 +51,8 @@ class CommandService : Service() {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val registrationInProgress = AtomicBoolean(false)
+    @Volatile private var lastRegistrationAt = 0L
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
     private val httpClient = OkHttpClient.Builder()
@@ -132,6 +135,7 @@ class CommandService : Service() {
     // ====================== REGISTRO DEL EQUIPO ======================
 
     private fun registerDevice() {
+        if (!registrationInProgress.compareAndSet(false, true)) return
         scope.launch {
             try {
                 val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
@@ -158,9 +162,12 @@ class CommandService : Service() {
                         return@launch
                     }
                 }
+                lastRegistrationAt = System.currentTimeMillis()
                 Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
             } catch (e: Exception) {
                 Log.e(TAG, "Error registrando equipo: ${e.message}")
+            } finally {
+                registrationInProgress.set(false)
             }
         }
     }
@@ -171,6 +178,7 @@ class CommandService : Service() {
         scope.launch {
             while (isActive) {
                 try {
+                    if (System.currentTimeMillis() - lastRegistrationAt >= 5 * 60 * 1000L) registerDevice()
                     checkForCommands()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error polling: ${e.message}")
