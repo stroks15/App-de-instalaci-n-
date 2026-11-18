@@ -5,6 +5,7 @@ import android.content.*
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.VpnService
 import android.os.*
 import android.os.StatFs
 import android.provider.Settings
@@ -13,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.dexterh4ck.equipos.data.*
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
+import com.dexterh4ck.equipos.data.WireGuardKeyStore
+import com.dexterh4ck.equipos.vpn.WireGuardTunnelManager
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
@@ -62,6 +65,7 @@ class CommandService : Service() {
     private lateinit var config: AgentConfig
     private lateinit var api: KioskApi
     private var agentWakeLock: PowerManager.WakeLock? = null
+    private var vpnTunnelManager: WireGuardTunnelManager? = null
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val outgoing = chain.request()
@@ -91,6 +95,7 @@ class CommandService : Service() {
         config = loadConfig()
         setupNotificationChannel()
         api = createApiClient(config.serverUrl)
+        startStoredVpnIfAuthorized()
         registerDevice()
         startPolling()
     }
@@ -159,6 +164,38 @@ class CommandService : Service() {
             .client(httpClient)
             .build()
             .create(KioskApi::class.java)
+    }
+
+    private fun startStoredVpnIfAuthorized() {
+        if (VpnService.prepare(this) != null) return
+        val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("vpn_enabled", false)) return
+        val ip = prefs.getString("assigned_vpn_ip", null)?.substringBefore('/').orEmpty()
+        val endpoint = prefs.getString("vpn_endpoint", null).orEmpty()
+        val serverKey = prefs.getString("vpn_server_public_key", null).orEmpty()
+        if (ip.isBlank() || endpoint.isBlank() || serverKey.isBlank()) return
+        scope.launch {
+            runCatching {
+                val pair = WireGuardKeyStore.getOrCreate(this@CommandService)
+                val wireGuardConfig = """
+                    [Interface]
+                    PrivateKey = ${pair.privateKey.toBase64()}
+                    Address = $ip/32
+                    MTU = 1280
+
+                    [Peer]
+                    PublicKey = $serverKey
+                    Endpoint = $endpoint
+                    AllowedIPs = 10.88.0.0/16
+                    PersistentKeepalive = 25
+                """.trimIndent()
+                vpnTunnelManager = WireGuardTunnelManager(this@CommandService)
+                vpnTunnelManager!!.connect(wireGuardConfig)
+                Log.i(TAG, "WireGuard tunnel restored for $ip")
+            }.onFailure {
+                Log.e(TAG, "WireGuard restore failed: ${it.message}")
+            }
+        }
     }
 
     // ====================== REGISTRO DEL EQUIPO ======================
