@@ -97,7 +97,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     // Rotate the agent credential only after ownership has been verified.
     const agentToken = randomBytes(32).toString('base64url');
-    const { error: tokenError } = await db.from('devices')
+    const { error: tokenError } = await (db.from('devices') as any)
       .update({ agent_key_hash: hashAgentToken(agentToken) })
       .eq('id', device.id)
       .eq('owner_id', auth.user.id);
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       assigned_ip: device.assigned_ip,
     }, auth.user.id);
 
-    await db.from('devices').update({
+    await (db.from('devices') as any).update({
       vpn_enabled: vpn.enabled,
       vpn_status: vpn.status,
     }).eq('id', device.id).eq('owner_id', auth.user.id);
