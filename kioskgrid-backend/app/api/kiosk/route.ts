@@ -23,12 +23,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, allowedApps } = body;
-    if (!['enable', 'disable'].includes(action)) {
-      return NextResponse.json({ error: 'action debe ser enable o disable' }, { status: 400 });
-    }
+    if (!['enable', 'disable'].includes(action)) return NextResponse.json({ error: 'action debe ser enable o disable' }, { status: 400 });
     const deviceIds = await resolveDeviceIds(body, auth.user.id);
     if (!deviceIds.length) return NextResponse.json({ error: 'No hay dispositivos destino' }, { status: 400 });
-
     const db = getSupabaseAdmin();
     const now = new Date().toISOString();
     const type = action === 'enable' ? 'kiosk_enable' : 'kiosk_disable';
@@ -39,10 +36,7 @@ export async function POST(request: NextRequest) {
     const { error } = await (db.from('tasks') as any).insert(rows);
     if (error) throw error;
     await (db.from('devices') as any).update({ kiosk_enabled: action === 'enable', updated_at: now }).in('id', deviceIds);
-    return NextResponse.json({
-      action, devices: deviceIds.length,
-      allowedApps: action === 'enable' ? (allowedApps || '(todas las apps del usuario)') : null
-    }, { status: 201 });
+    return NextResponse.json({ action, devices: deviceIds.length, allowedApps: action === 'enable' ? (allowedApps || '(todas las apps del usuario)') : null }, { status: 201 });
   } catch (error: any) {
     const message = error?.message || 'No se pudo cambiar el modo kiosk';
     return NextResponse.json({ error: message }, { status: message.includes('pertenecen') ? 403 : 500 });
@@ -52,14 +46,12 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const auth = await requireUser(request);
   if (auth.response || !auth.user) return auth.response;
-  const deviceRef = new URL(request.url).searchParams.get('deviceId');
-  if (!deviceRef) return NextResponse.json({ error: 'deviceId es requerido' }, { status: 400 });
+  const ref = new URL(request.url).searchParams.get('deviceId');
+  if (!ref) return NextResponse.json({ error: 'deviceId es requerido' }, { status: 400 });
   const db = getSupabaseAdmin();
-  const { data, error } = await (db.from('devices') as any)
-    .select('id,device_id,kiosk_enabled,allowed_apps,blocked_apps')
-    .eq('owner_id', auth.user.id);
+  const { data, error } = await (db.from('devices') as any).select('id,device_id,kiosk_enabled').eq('owner_id', auth.user.id);
   if (error) return NextResponse.json({ error: 'No se pudo consultar el dispositivo' }, { status: 500 });
-  const device = (data ?? []).find((d: any) => d.id === deviceRef || d.device_id === deviceRef);
+  const device = (data ?? []).find((d: any) => d.id === ref || d.device_id === ref);
   if (!device) return NextResponse.json({ error: 'Dispositivo no encontrado' }, { status: 404 });
   return NextResponse.json(device);
 }
