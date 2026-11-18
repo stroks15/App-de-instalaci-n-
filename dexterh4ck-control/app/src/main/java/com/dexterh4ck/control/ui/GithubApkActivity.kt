@@ -4,6 +4,8 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.Gravity
+import android.widget.FrameLayout
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -41,6 +43,9 @@ class GithubApkActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var results: LinearLayout
+    private lateinit var transferRing: ProgressBar
+    private lateinit var transferPercent: TextView
+    private lateinit var transferStage: TextView
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -99,6 +104,35 @@ class GithubApkActivity : AppCompatActivity() {
         root.addView(repositoryInput, LinearLayout.LayoutParams(-1, dp(54)))
         root.addView(searchButton, LinearLayout.LayoutParams(-1, dp(52)))
         root.addView(progress)
+        val transferFrame = FrameLayout(this).apply {
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(-1, dp(142))
+        }
+        transferRing = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            isIndeterminate = false
+            progressDrawable = getDrawable(R.drawable.circular_progress_ring)
+            layoutParams = FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER)
+        }
+        transferPercent = TextView(this).apply {
+            text = "0%"
+            textSize = 23f
+            setTextColor(Color.rgb(8, 75, 170))
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(-2, -2, Gravity.CENTER)
+        }
+        transferFrame.addView(transferRing)
+        transferFrame.addView(transferPercent)
+        transferStage = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.DKGRAY)
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        root.addView(transferFrame)
+        transferFrame.tag = "transferFrame"
+        root.addView(transferStage)
         root.addView(status)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
@@ -243,26 +277,76 @@ class GithubApkActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showTransferProgress(percent: Int, message: String) {
+        val frame = (findViewById<View>(android.R.id.content) as? android.view.ViewGroup)
+            ?.let { root -> findFrame(root) }
+        frame?.visibility = View.VISIBLE
+        transferStage.visibility = View.VISIBLE
+        transferRing.progress = percent.coerceIn(0, 100)
+        transferPercent.text = "${percent.coerceIn(0, 100)}%"
+        transferStage.text = message
+    }
+
+    private fun findFrame(group: android.view.ViewGroup): FrameLayout? {
+        for (index in 0 until group.childCount) {
+            val child = group.getChildAt(index)
+            if (child is FrameLayout && child.tag == "transferFrame") return child
+            if (child is android.view.ViewGroup) findFrame(child)?.let { return it }
+        }
+        return null
+    }
+
     private fun installOnDevices(apk: ApkEntry, deviceIds: List<String>) {
-        progress.visibility = View.VISIBLE
-        status.text = "Enviando instalación a ${deviceIds.size} equipo(s)..."
+        progress.visibility = View.GONE
+        status.text = "Conectando directamente desde GitHub. El APK no se subirá a Supabase."
+        showTransferProgress(0, "Preparando descarga directa desde GitHub…")
         lifecycleScope.launch {
-            var sent = 0
+            var completed = 0
             var failed = 0
-            for (id in deviceIds) {
+            for ((index, id) in deviceIds.withIndex()) {
                 try {
-                    val response = withContext(Dispatchers.IO) {
+                    val created = withContext(Dispatchers.IO) {
                         api.createTask(TaskRequest(device_id = id, type = "install", payload = apk.url))
                     }
-                    if (response.isSuccessful) sent++ else failed++
+                    if (!created.isSuccessful || created.body() == null) {
+                        failed++
+                        continue
+                    }
+                    val taskId = created.body()!!.id
+                    var attempts = 0
+                    var terminal = false
+                    while (attempts < 86400 && !terminal) {
+                        delay(2000)
+                        attempts++
+                        val response = withContext(Dispatchers.IO) { api.getTask(taskId) }
+                        if (!response.isSuccessful) continue
+                        val task = response.body()?.task ?: continue
+                        val raw = task.result
+                        val progressData = runCatching {
+                            val json = JSONObject(raw ?: "{}")
+                            val phase = json.optString("phase")
+                            val percent = json.optInt("progress", 0)
+                            val label = when (phase) {
+                                "download" -> "Descargando APK desde GitHub al equipo ${index + 1}/${deviceIds.size}…"
+                                "install" -> "Preparando instalación en el equipo ${index + 1}/${deviceIds.size}…"
+                                else -> "Procesando instalación en el equipo ${index + 1}/${deviceIds.size}…"
+                            }
+                            percent to label
+                        }.getOrNull()
+                        if (progressData != null) showTransferProgress(progressData.first, progressData.second)
+                        if (task.status == "awaiting_user") showTransferProgress(0, "Acepta la instalación en la TV (equipo ${index + 1}/${deviceIds.size}); puede esperar hasta 48 h.")
+                        if (task.status == "completed") { completed++; terminal = true }
+                        if (task.status == "failed" || task.status == "expired") { failed++; terminal = true }
+                        status.text = "Equipos completados: $completed · Fallidos: $failed · En proceso: ${deviceIds.size - completed - failed}"
+                    }
+                    if (!terminal) failed++
                 } catch (_: Exception) {
                     failed++
                 }
-                status.text = "Enviadas: $sent · Fallidas: $failed"
             }
-            progress.visibility = View.GONE
-            status.text = "Instalación enviada a $sent equipo(s). Fallos: $failed. Los equipos pueden requerir aceptación local si no son Device Owner."
-            toast("Instalación enviada: $sent equipo(s); $failed fallos")
+            showTransferProgress(if (failed == 0) 100 else transferRing.progress, "Proceso finalizado: $completed completados · $failed fallidos.")
+            status.text = "Instalación terminada. Completados: $completed · Fallidos: $failed. Los APK públicos de GitHub se descargan directamente en cada equipo, sin pasar por la nube de KioskGrid."
+            toast("Completados: $completed · Fallidos: $failed")
         }
     }
 
