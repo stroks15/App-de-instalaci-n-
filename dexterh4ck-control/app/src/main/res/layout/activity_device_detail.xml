@@ -287,6 +287,39 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp" />
 
+        <EditText
+            android:id="@+id/etAppSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Search apps..."
+            android:singleLine="true"
+            android:inputType="text"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:padding="12dp"
+            android:background="@color/white"
+            android:textColor="@color/black"
+            android:textColorHint="@color/gray"
+            android:layout_marginTop="8dp" />
+
+        <Spinner
+            android:id="@+id/spAppFilter"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:entries="@array/app_filters"
+            android:background="@color/white" />
+
+        <Button
+            android:id="@+id/btnDebloatSelected"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="DEBLOAT · 0 seleccionadas"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:backgroundTint="#16865D"
+            android:enabled="false"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvInstalledApps"
             android:layout_width="match_parent"
