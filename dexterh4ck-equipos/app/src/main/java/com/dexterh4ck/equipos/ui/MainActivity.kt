@@ -6,6 +6,8 @@ import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.app.ActivityManager
 import android.app.Activity
 import android.net.VpnService
