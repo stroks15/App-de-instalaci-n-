@@ -19,7 +19,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     const db = getSupabaseAdmin();
-    const { data, error } = await db.rpc('register_authenticated_device', {
+    const { data, error } = await (db as any).rpc('register_authenticated_device', {
       p_user_id: auth.user.id,
       p_device_id: deviceId,
       p_device_name: deviceName,
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       }
     }
 
-    await db.from('devices').update({
+    await (db.from('devices') as any).update({
       vpn_enabled: vpn.enabled,
       vpn_status: vpn.status,
     }).eq('id', device.id).eq('owner_id', auth.user.id);
