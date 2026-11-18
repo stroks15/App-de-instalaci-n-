@@ -65,9 +65,10 @@ Set these variables in the KioskGrid backend project:
 - `WG_MANAGER_URL=https://vpn-manager.example.com`
 - `WG_MANAGER_TOKEN=the-same-random-secret-as-the-manager-env-file`
 
-The API calls `POST /api/peers` with the device public key and a single /32 address.
-The manager validates that address is inside 10.88.0.0/16, applies `wg set`, and persists
-the peer using `wg-quick save`. It returns success only after those operations complete.
+The API calls `POST /api/peers` with the device public key, authenticated Supabase `owner_id`, and a single /32 address.
+The manager validates that address is inside 10.88.0.0/16, applies `wg set`, rebuilds the
+`KIOSKGRID_WG` firewall chain so peers can forward only to devices with the same owner ID,
+and persists the peer using `wg-quick save`. It returns success only after those operations complete.
 
 ## Security notes
 
