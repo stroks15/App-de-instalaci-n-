@@ -261,6 +261,7 @@ class DeviceDetailActivity : AppCompatActivity() {
             var attempts = 0
             var lastStatus = ""
             var cloudCopyDeleted = false
+            var taskTerminal = false
             try {
                 // Puede permanecer awaiting_user hasta 48 h si el equipo no es Device Owner.
                 while (attempts < 86400) {
@@ -286,6 +287,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                         updateInstallProgress(installProgressRing.progress, "Esperando aceptación en la TV (máximo 48 h)")
                     }
                     if (task.status == "completed" || task.status == "failed" || task.status == "expired") {
+                        taskTerminal = true
                         val success = task.status == "completed"
                         setTaskStatus(if (success) "✔ Completado" else "✘ ${task.status}", false)
                         tvTaskResult.text = parseResult(task) + if (task.error != null) "\\nError: ${task.error}" else ""
@@ -298,7 +300,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                 }
                 setTaskStatus("La tarea sigue pendiente. Se conservará el APK temporal hasta que el equipo la resuelva.", false)
             } finally {
-                if (storagePath != null && !cloudCopyDeleted) {
+                // Si la pantalla se cierra antes de que el equipo descargue el APK, no borrar el origen:
+                // la tarea remota aún depende de él. Se elimina al confirmar descarga o estado terminal.
+                if (storagePath != null && !cloudCopyDeleted && taskTerminal) {
                     withContext(NonCancellable + Dispatchers.IO) {
                         runCatching { api.deleteFile(path = storagePath) }
                     }
