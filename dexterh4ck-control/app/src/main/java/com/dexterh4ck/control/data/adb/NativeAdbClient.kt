@@ -63,6 +63,15 @@ class NativeAdbClient(context: Context) {
         }
     }
 
+    suspend fun pingLatencyMs(ip: String, timeoutMs: Int = 2500): Long? = withContext(Dispatchers.IO) {
+        requireValidIp(ip)
+        runCatching {
+            val start = System.nanoTime()
+            Socket().use { it.connect(InetSocketAddress(ip, 5555), timeoutMs) }
+            (System.nanoTime() - start) / 1_000_000L
+        }.getOrNull()
+    }
+
     suspend fun pingPort(ip: String, timeoutMs: Int = 2500): Boolean = withContext(Dispatchers.IO) {
         requireValidIp(ip)
         runCatching {
