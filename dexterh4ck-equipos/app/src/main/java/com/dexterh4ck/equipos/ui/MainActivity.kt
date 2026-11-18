@@ -3,6 +3,9 @@ package com.dexterh4ck.equipos.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.app.ActivityManager
+import android.os.Environment
+import android.os.StatFs
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -40,6 +43,7 @@ class MainActivity : AppCompatActivity() {
         deviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV"))
         pairingCode.text = PairingCode.getOrCreate(this)
         refreshAdbStatus()
+        refreshResourceStats()
 
         findViewById<Button>(R.id.btnSave).setOnClickListener { saveAndStart() }
         findViewById<Button>(R.id.btnCopyCode).setOnClickListener {
@@ -55,7 +59,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::adbStatus.isInitialized) refreshAdbStatus()
+        if (::adbStatus.isInitialized) { refreshAdbStatus(); refreshResourceStats() }
+    }
+
+    private fun refreshResourceStats() {
+        val ramView = findViewById<TextView>(R.id.tvRamValue)
+        val storageView = findViewById<TextView>(R.id.tvStorageValue)
+        val memory = ActivityManager.MemoryInfo()
+        (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
+        val ramTotal = memory.totalMem
+        val ramFree = memory.availMem
+        val stat = StatFs(Environment.getDataDirectory().path)
+        val storageTotal = stat.totalBytes
+        val storageFree = stat.availableBytes
+        ramView.text = "RAM: ${formatBytes(ramFree)} libres de ${formatBytes(ramTotal)}"
+        storageView.text = "Almacenamiento: ${formatBytes(storageFree)} libres de ${formatBytes(storageTotal)}"
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val gib = bytes / (1024.0 * 1024.0 * 1024.0)
+        return if (gib >= 1.0) String.format(java.util.Locale.US, "%.2f GB", gib)
+        else String.format(java.util.Locale.US, "%.0f MB", bytes / (1024.0 * 1024.0))
     }
 
     private fun refreshAdbStatus() {
