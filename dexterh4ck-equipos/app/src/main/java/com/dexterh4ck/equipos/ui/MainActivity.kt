@@ -7,6 +7,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.Context
 import android.app.ActivityManager
+import android.app.Activity
+import android.net.VpnService
 import android.app.AlertDialog
 import android.os.Environment
 import android.os.StatFs
@@ -18,12 +20,15 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import com.dexterh4ck.equipos.R
 import com.dexterh4ck.equipos.data.AgentConfig
 import com.dexterh4ck.equipos.service.CommandService
 import com.dexterh4ck.equipos.util.DeviceIdentity
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
 import com.dexterh4ck.equipos.data.AgentAuthClient
+import com.dexterh4ck.equipos.data.WireGuardKeyStore
+import com.dexterh4ck.equipos.vpn.WireGuardTunnelManager
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,6 +44,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var password: EditText
     private lateinit var adbStatus: TextView
     private lateinit var connectionStatus: TextView
+    private var tunnelManager: WireGuardTunnelManager? = null
+    private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) connectConfiguredVpn()
+        else connectionStatus.text = "Cuenta registrada; falta autorizar el permiso VPN de Android."
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,6 +125,41 @@ class MainActivity : AppCompatActivity() {
                 catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
             }
             .show()
+    }
+
+
+    private fun connectConfiguredVpn() {
+        lifecycleScope.launch {
+            try {
+                val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+                val ip = prefs.getString("assigned_vpn_ip", null)?.substringBefore('/').orEmpty()
+                val endpoint = prefs.getString("vpn_endpoint", null).orEmpty()
+                val serverKey = prefs.getString("vpn_server_public_key", null).orEmpty()
+                require(ip.isNotBlank() && endpoint.isNotBlank() && serverKey.isNotBlank()) {
+                    "La configuración del gateway WireGuard está incompleta."
+                }
+                val pair = WireGuardKeyStore.getOrCreate(this@MainActivity)
+                val configuration = """
+                    [Interface]
+                    PrivateKey = ${pair.privateKey.toBase64()}
+                    Address = $ip/32
+                    MTU = 1280
+
+                    [Peer]
+                    PublicKey = $serverKey
+                    Endpoint = $endpoint
+                    AllowedIPs = 10.88.0.0/16
+                    PersistentKeepalive = 25
+                """.trimIndent()
+                withContext(Dispatchers.IO) {
+                    if (tunnelManager == null) tunnelManager = WireGuardTunnelManager(this@MainActivity)
+                    tunnelManager!!.connect(configuration)
+                }
+                connectionStatus.text = "WireGuard conectado · $ip"
+            } catch (error: Exception) {
+                connectionStatus.text = "VPN no conectada: ${error.localizedMessage}"
+            }
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -202,6 +247,11 @@ class MainActivity : AppCompatActivity() {
                 val ip = device?.optString("assigned_ip").orEmpty()
                 val vpnStatus = vpn?.optString("status") ?: "not_configured"
                 connectionStatus.text = "Cuenta vinculada · IP reservada: ${ip.ifBlank { "pendiente" }} · VPN: $vpnStatus"
+                if (vpn?.optBoolean("enabled") == true) {
+                    val permission = VpnService.prepare(this@MainActivity)
+                    if (permission != null) vpnPermissionLauncher.launch(permission)
+                    else connectConfiguredVpn()
+                }
                 Toast.makeText(this@MainActivity, "Equipo registrado en tu cuenta KioskGrid.", Toast.LENGTH_LONG).show()
             } catch (error: Exception) {
                 connectionStatus.text = "No se pudo iniciar sesión: ${error.localizedMessage}"
