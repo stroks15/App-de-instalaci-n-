@@ -103,6 +103,7 @@ class BulkManagementActivity : AppCompatActivity() {
             val tempFile = File(cacheDir, "bulk_${System.currentTimeMillis()}.apk")
             var cloudPath: String? = null
             var cloudDeleted = false
+            var tasksCreated = false
             try {
                 showProgress(0, "Leyendo APK del teléfono…")
                 withContext(Dispatchers.IO) {
@@ -158,6 +159,7 @@ class BulkManagementActivity : AppCompatActivity() {
                     } catch (_: Exception) { sendFailures++ }
                 }
                 if (taskIds.isEmpty()) throw IllegalStateException("No se pudo enviar la instalación a ningún equipo")
+                tasksCreated = true
 
                 val downloaded = mutableSetOf<String>()
                 val terminal = mutableSetOf<String>()
@@ -203,7 +205,8 @@ class BulkManagementActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 showProgress(ring.progress, "Error: ${e.message}")
                 toast("Error: ${e.message}")
-                if (cloudPath != null && !cloudDeleted) {
+                // No eliminar el archivo si ya hay equipos con tareas pendientes de descarga.
+                if (cloudPath != null && !cloudDeleted && !tasksCreated) {
                     runCatching { withContext(Dispatchers.IO) { api.deleteFile(path = cloudPath!!) } }
                 }
             } finally {
