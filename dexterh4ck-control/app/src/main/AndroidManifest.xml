@@ -36,6 +36,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".ui.NetBirdToolsActivity" android:exported="false" />
         <activity android:name=".ui.DeviceListActivity" android:exported="false" />
         <activity android:name=".ui.DeviceDetailActivity" android:exported="false" />
         <activity android:name=".ui.ApkPickerActivity" android:exported="false" />
