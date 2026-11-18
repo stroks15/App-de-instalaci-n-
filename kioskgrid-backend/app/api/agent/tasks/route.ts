@@ -85,5 +85,43 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     return NextResponse.json({ error: 'Tarea no encontrada para este equipo' }, { status: 404 });
   }
 
-  return NextResponse.json({ task: data });
+  // El agente sólo marca "downloaded" después de guardar y validar el APK en su almacenamiento privado.
+  // En ese momento se borra el objeto temporal de Storage, incluso si Control se cierra o pierde conexión.
+  let cloudApkDeleted = false;
+  if (typeof body.result === 'string' && (status === 'in_progress' || status === 'awaiting_user')) {
+    try {
+      const progress = JSON.parse(body.result) as { phase?: string };
+      if (progress.phase === 'downloaded') {
+        const { data: originalTask } = await ((db.from('tasks') as any) as any)
+          .select('payload')
+          .eq('id', id)
+          .eq('device_id', auth.device.id)
+          .maybeSingle();
+        const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL
+          ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
+          : '';
+        const apkUrl = typeof originalTask?.payload === 'string' ? new URL(originalTask.payload) : null;
+        const signedPrefix = '/storage/v1/object/sign/apks/';
+        if (
+          apkUrl &&
+          supabaseOrigin &&
+          apkUrl.origin === supabaseOrigin &&
+          apkUrl.pathname.startsWith(signedPrefix) &&
+          typeof auth.device.owner_id === 'string'
+        ) {
+          const objectPath = decodeURIComponent(apkUrl.pathname.slice(signedPrefix.length));
+          if (objectPath.startsWith(auth.device.owner_id + '/')) {
+            const { error: removeError } = await db.storage.from('apks').remove([objectPath]);
+            cloudApkDeleted = !removeError;
+            if (removeError) console.error('Temporary APK cleanup failed:', removeError.message);
+          }
+        }
+      }
+    } catch (cleanupError) {
+      // No se invalida el progreso de instalación si la limpieza temporal falla.
+      console.error('Temporary APK cleanup skipped:', cleanupError);
+    }
+  }
+
+  return NextResponse.json({ task: data, cloud_apk_deleted: cloudApkDeleted });
 }
