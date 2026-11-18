@@ -388,7 +388,7 @@ class CommandService : Service() {
         reportTask(taskId, "in_progress")
         try {
             val result = installApkFile(taskId, apkFile)
-            reportTask(taskId, "completed", result = "\" ${escapeJson(result)} \"".replace("\" ", "\"").replace(" \"", "\""))
+            reportTask(taskId, "completed", result = "\"\${escapeJson(result)}\"")
             updateNotification("completed", "install")
         } catch (e: Exception) {
             reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
