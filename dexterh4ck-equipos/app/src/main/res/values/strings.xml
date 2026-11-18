@@ -3,13 +3,10 @@
     <string name="device_name">Nombre del equipo</string>
     <string name="enter_device_name">Ingresa un nombre para identificar este equipo</string>
     <string name="save">Guardar</string>
-    <string name="pairing_code">Código de emparejamiento</string>
     <string name="status">Estado</string>
     <string name="status_idle">Inactivo</string>
     <string name="status_installing">Instalando aplicación...</string>
     <string name="status_uninstalling">Desinstalando aplicación...</string>
-    <string name="status_paired">Emparejado</string>
-    <string name="status_not_paired">No emparejado</string>
     <string name="install_from_controller">Instalar desde Dexterh4ck Control</string>
     <string name="uninstall_app">Desinstalar aplicación</string>
     <string name="device_id">ID del dispositivo</string>
