@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await (db.from('tasks') as any).insert({
       device_id: device.id,
       type: `screencap:${encodeURIComponent(fileName)}`,
-      payload: { image: fileContent, requested_type: type },
+      payload: JSON.stringify({ image: fileContent, requested_type: type }),
       status: 'queued',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
