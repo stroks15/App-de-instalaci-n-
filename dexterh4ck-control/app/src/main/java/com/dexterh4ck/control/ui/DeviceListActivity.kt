@@ -18,7 +18,8 @@ import com.dexterh4ck.control.R
 import com.dexterh4ck.control.adapter.DeviceAdapter
 import com.dexterh4ck.control.data.ApiConfig
 import com.dexterh4ck.control.data.AuthStore
-import com.dexterh4ck.control.data.ControlVpnBootstrap
+import com.dexterh4ck.control.data.adb.NativeAdbClient
+import com.dexterh4ck.control.data.netbird.NetBirdManager
 import com.dexterh4ck.control.data.KioskApi
 import com.dexterh4ck.control.data.Device
 import kotlinx.coroutines.Dispatchers
@@ -106,55 +107,32 @@ class DeviceListActivity : AppCompatActivity() {
     }
 
     private fun reconnectDevice(device: Device) {
-        Toast.makeText(this, "Restableciendo WireGuard y verificando ${device.name}…", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    ControlVpnBootstrap.reconnect(this@DeviceListActivity)
-                }
-                val vpnIp = device.assigned_ip?.substringBefore('/')
-                    ?: throw IllegalStateException("El equipo todavía no tiene una IP VPN asignada.")
-                withContext(Dispatchers.IO) { checkVpnHealth(vpnIp) }
-                val response = withContext(Dispatchers.IO) {
-                    api.getDeviceDetail(device.device_id)
-                }
-                if (response.isSuccessful) {
-                    val current = response.body()
-                    val vpnIp = device.assigned_ip?.substringBefore('/') ?: "IP no asignada"
-                    val state = current?.device?.status ?: device.status
-                    Toast.makeText(
-                        this@DeviceListActivity,
-                        "VPN renovada · $vpnIp · Agente: $state",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    loadDevices(quiet = true)
-                } else {
-                    Toast.makeText(
-                        this@DeviceListActivity,
-                        "VPN renovada, pero el agente no respondió (HTTP ${response.code()}).",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            } catch (error: Exception) {
-                Toast.makeText(
-                    this@DeviceListActivity,
-                    "No se pudo reconectar: ${error.localizedMessage}",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+        val status = NetBirdManager.status(this)
+        if (!status.connected) {
+            val opened = NetBirdManager.openOfficialClient(this)
+            Toast.makeText(
+                this,
+                if (opened) "Abre NetBird y confirma que el controlador esté conectado." else "NetBird no está instalado.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
         }
-    }
-
-    private fun checkVpnHealth(ip: String) {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress(ip, 8787), 3500)
-            socket.soTimeout = 3500
-            val request = "GET /health HTTP/1.1\r\nHost: $ip\r\nConnection: close\r\n\r\n"
-            socket.getOutputStream().write(request.toByteArray(StandardCharsets.US_ASCII))
-            val statusLine = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII)).readLine().orEmpty()
-            if (!statusLine.contains("200")) {
-                throw IllegalStateException("El endpoint VPN del equipo no respondió correctamente.")
-            }
+        val ip = device.assigned_ip?.substringBefore('/')?.takeIf {
+            it.matches(Regex("100\\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.(?:25[0-5]|2[0-4][0-9]|[01]?\\d?\\d)\\.(?:25[0-5]|2[0-4][0-9]|[01]?\\d?\\d)"))
+        }
+        if (ip == null) {
+            Toast.makeText(this, "Este equipo aún no tiene una IP NetBird 100.64.0.0/10 guardada. Registra su IP desde Herramientas avanzadas.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "Comprobando ADB NetBird de ${device.name}…", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val reachable = withContext(Dispatchers.IO) { NativeAdbClient(this@DeviceListActivity).pingPort(ip) }
+            Toast.makeText(
+                this@DeviceListActivity,
+                if (reachable) "ADB disponible en $ip:5555. La autorización RSA se comprobará al ejecutar un comando."
+                else "No se alcanza $ip:5555. Verifica NetBird, ADB TCP y la autorización en el equipo.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
