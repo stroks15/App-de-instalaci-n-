@@ -30,6 +30,9 @@ import androidx.lifecycle.lifecycleScope
 import com.dexterh4ck.control.data.adb.NativeAdbClient
 import com.dexterh4ck.control.data.adb.RemoteDeviceOperations
 import com.dexterh4ck.control.data.netbird.NetBirdManager
+import com.dexterh4ck.control.data.netbird.NetBirdPeerDatabase
+import com.dexterh4ck.control.data.netbird.NetBirdPeerEntity
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,6 +49,8 @@ class NetBirdToolsActivity : ComponentActivity() {
     private var output by mutableStateOf("Añade las IP NetBird de tus equipos, una por línea.")
     private var shellCommand by mutableStateOf("getprop ro.product.model")
     private var packageName by mutableStateOf("")
+    private var peerAlias by mutableStateOf("Equipo Android")
+    private var savedPeers by mutableStateOf<List<NetBirdPeerEntity>>(emptyList())
     private var busy by mutableStateOf(false)
     private val progress = mutableStateMapOf<String, String>()
     private val telemetry = mutableStateMapOf<String, String>()
@@ -61,6 +66,9 @@ class NetBirdToolsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         adb = NativeAdbClient(this)
         operations = RemoteDeviceOperations(adb)
+        lifecycleScope.launch {
+            NetBirdPeerDatabase.get(this@NetBirdToolsActivity).peers().observeAll().collect { savedPeers = it }
+        }
         setContent {
             MaterialTheme {
                 val vpn = remember { NetBirdManager.status(this@NetBirdToolsActivity) }
@@ -90,6 +98,9 @@ class NetBirdToolsActivity : ComponentActivity() {
                         minLines = 2
                     )
                     Text("Se usa ADB TCP 5555. El equipo remoto debe tener ADB TCP habilitado y haber autorizado la clave RSA de este controlador.")
+                    OutlinedTextField(value = peerAlias, onValueChange = { peerAlias = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Alias del equipo (para guardar)") })
+                    Button(enabled = !busy && peers().isNotEmpty() && peerAlias.isNotBlank(), onClick = { savePeers() }) { Text("Guardar IPs e identidad en Room") }
+                    savedPeers.forEach { saved -> Text("${saved.alias} · ${saved.netbirdIp} · ${saved.status}") }
                     OutlinedTextField(value = shellCommand, onValueChange = { shellCommand = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Comando adb shell") })
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(enabled = !busy && peers().isNotEmpty() && shellCommand.isNotBlank(), onClick = { runAction("Ejecutando comando") { adb.shell(it, shellCommand) } }) { Text("Ejecutar") }
@@ -140,6 +151,32 @@ class NetBirdToolsActivity : ComponentActivity() {
                     Text("Las operaciones masivas se ejecutan con concurrencia limitada. El resultado por IP se conserva en esta pantalla.")
                 }
             }
+        }
+    }
+
+    private fun savePeers() {
+        val targets = peers()
+        if (targets.isEmpty()) { output = "No hay IPs NetBird válidas."; return }
+        busy = true
+        lifecycleScope.launch {
+            try {
+                val dao = NetBirdPeerDatabase.get(this@NetBirdToolsActivity).peers()
+                val results = operations.runOnDevices(targets) { ip ->
+                    val serial = adb.shell(ip, "getprop ro.serialno").substringAfter("\n").trim().takeIf { it.isNotBlank() && it != "unknown" }
+                    val androidId = adb.shell(ip, "settings get secure android_id").substringAfter("\n").trim()
+                    val hardwareId = serial ?: androidId.takeIf { it.isNotBlank() && it != "null" } ?: throw IllegalStateException("El equipo no devolvió serial ni Android ID.")
+                    dao.upsert(NetBirdPeerEntity(
+                        peerId = hardwareId,
+                        hardwareId = hardwareId,
+                        alias = peerAlias.trim(),
+                        netbirdIp = ip,
+                        status = "reachable",
+                        lastSeenEpochMs = System.currentTimeMillis()
+                    ))
+                    "Identidad guardada: $hardwareId"
+                }
+                output = results.entries.joinToString("\n") { (ip, result) -> "$ip: ${result.getOrElse { it.message ?: "Error" }}" }
+            } finally { busy = false }
         }
     }
 
