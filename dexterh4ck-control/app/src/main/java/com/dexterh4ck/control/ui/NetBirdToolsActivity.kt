@@ -63,7 +63,7 @@ class NetBirdToolsActivity : ComponentActivity() {
         operations = RemoteDeviceOperations(adb)
         setContent {
             MaterialTheme {
-                val vpn = remember { NetBirdManager.status(this) }
+                val vpn = remember { NetBirdManager.status(this@NetBirdToolsActivity) }
                 Column(
                     modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -195,11 +195,15 @@ class NetBirdToolsActivity : ComponentActivity() {
     private fun runFileOperation(uri: Uri, stage: String, action: suspend (String, File) -> String) {
         busy = true
         lifecycleScope.launch {
-            val file = withContext(Dispatchers.IO) { copyToCache(uri) }
+            var file: File? = null
             try {
-                val results = operations.runOnDevices(peers()) { ip ->
+                file = withContext(Dispatchers.IO) { copyToCache(uri) }
+                val selectedFile = file
+                val targets = peers()
+                if (targets.isEmpty()) throw IllegalStateException("No hay IPs NetBird válidas.")
+                val results = operations.runOnDevices(targets) { ip ->
                     progress[ip] = "Conectando…"
-                    action(ip, file)
+                    action(ip, selectedFile)
                 }
                 output = results.entries.joinToString("\n\n") { (ip, result) ->
                     progress[ip] = if (result.isSuccess) "Éxito" else "Error"
@@ -208,7 +212,7 @@ class NetBirdToolsActivity : ComponentActivity() {
             } catch (e: Exception) {
                 output = "$stage: ${e.message}"
             } finally {
-                file.delete()
+                file?.delete()
                 busy = false
             }
         }
