@@ -366,13 +366,15 @@ class CommandService : Service() {
         try {
             // Descarga primero al almacenamiento privado del TV; después Control puede borrar el temporal en la nube.
             val apkFile = downloadApk(task.id, task.payload)
-            reportTask(task.id, "awaiting_user", result = JSONObject().apply {
+            // Persistir primero el archivo local para que un reinicio no pierda la referencia.
+            prefs.edit().putString("${key}_file", apkFile.absolutePath)
+                .putLong("${key}_expires", expiresAt).apply()
+            val reported = reportTask(task.id, "awaiting_user", result = JSONObject().apply {
                 put("phase", "downloaded")
                 put("progress", 100)
                 put("message", "APK descargado localmente; esperando aceptación en la TV.")
             }.toString(), error = "Esperando aceptación local; vence a las 48 horas.")
-            prefs.edit().putString("${key}_file", apkFile.absolutePath)
-                .putLong("${key}_expires", expiresAt).putBoolean("${key}_reported", true).apply()
+            prefs.edit().putBoolean("${key}_reported", reported).apply()
             showPendingInstallNotification(task.id, apkFile.name, expiresAt)
         } catch (error: Exception) {
             reportTask(task.id, "failed", error = "No se pudo descargar el APK: ${error.message}")
