@@ -24,7 +24,9 @@ object AgentAuthClient {
         }
         val accessToken = session.optString("access_token")
         require(accessToken.isNotBlank()) { "El backend no devolvió una sesión válida." }
+        val wireGuardKeys = WireGuardKeyStore.getOrCreate(context)
         val registrationBody = JSONObject().put("device_id", deviceId).put("device_name", deviceName.trim())
+            .put("public_key", wireGuardKeys.publicKey.toBase64())
             .put("device_role", "agent").put("device_type", "android_tv")
             .put("platform", if (android.os.Build.MANUFACTURER.contains("Amazon", true)) "fireos" else "android")
             .put("app_version", "1.0.0").toString().toRequestBody(jsonType)
@@ -39,6 +41,7 @@ object AgentAuthClient {
         require(token.isNotBlank()) { "El backend no devolvió la credencial del agente." }
         check(AgentTokenStore.saveToken(context, token)) { "No se pudo guardar la credencial segura del equipo." }
         val device = registration.optJSONObject("device")
+        val vpn = registration.optJSONObject("vpn")
         context.getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE).edit()
             .putString(AgentConfig.KEY_DEVICE_ID, deviceId).putString(AgentConfig.KEY_DEVICE_NAME, deviceName.trim())
             .putString(AgentConfig.KEY_SERVER_URL, backendUrl.trimEnd('/')).putBoolean(AgentConfig.KEY_IS_PAIRED, true)
