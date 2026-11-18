@@ -288,7 +288,7 @@ class CommandService : Service() {
 
     private fun pendingInstallPrefs() = getSharedPreferences("pending_user_installs", Context.MODE_PRIVATE)
 
-    private fun pendingInstallNotificationId(taskId: String) = 41000 + (taskId.hashCode() and 0x0fff)
+    private fun pendingInstallNotificationId(taskId: String) = taskId.hashCode() and 0x7fffffff
 
     private fun parseServerExpiry(value: String?): Long {
         if (value.isNullOrBlank()) return 0L
@@ -320,10 +320,10 @@ class CommandService : Service() {
             expirePendingInstall(task.id)
             return
         }
-        val alreadyQueued = existingExpiry > 0L && !prefs.getString("${key}_url", null).isNullOrBlank()
         prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
-        if (!alreadyQueued) {
-            reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
+        if (!prefs.getBoolean("${key}_reported", false)) {
+            val reported = reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
+            if (reported) prefs.edit().putBoolean("${key}_reported", true).apply()
         }
         showPendingInstallNotification(task.id, task.payload, expiresAt)
     }
@@ -371,7 +371,7 @@ class CommandService : Service() {
         }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
-        prefs.edit().remove("${key}_url").remove("${key}_expires").apply()
+        prefs.edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
         reportTask(taskId, "in_progress")
         try {
             val result = installApp(url)
@@ -406,11 +406,14 @@ class CommandService : Service() {
     }
 
     /** Reporta estado/resultado al backend (PATCH /api/tasks/{id}). */
-    private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null) {
-        try {
-            api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
+    private suspend fun reportTask(id: String, status: String, result: String? = null, error: String? = null): Boolean {
+        return try {
+            val response = api.updateTask(TaskUpdate(id = id, status = status, result = result, error = error))
+            if (!response.isSuccessful) Log.e(TAG, "Backend rechazó estado $status de tarea $id: HTTP ${response.code()}")
+            response.isSuccessful
         } catch (e: Exception) {
             Log.e(TAG, "Error reportando tarea $id: ${e.message}")
+            false
         }
     }
 
