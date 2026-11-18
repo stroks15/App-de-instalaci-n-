@@ -4,7 +4,7 @@ package com.dexterh4ck.equipos.data
 data class DeviceRegistration(
     val device_id: String,
     val hardware_id: String,
-    val pairing_code: String,
+    val pairing_code: String? = null,
     val name: String,
     val type: String = "android_tv",
     val platform: String = "android",
