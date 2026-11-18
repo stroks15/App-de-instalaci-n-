@@ -286,9 +286,9 @@ class DeviceDetailActivity : AppCompatActivity() {
                     if (task.status == "awaiting_user" && !cloudCopyDeleted) {
                         updateInstallProgress(installProgressRing.progress, "Esperando aceptación en la TV (máximo 48 h)")
                     }
-                    if (task.status == "completed" || task.status == "failed" || task.status == "expired") {
+                    if (task.status == "completed" || task.status == "done" || task.status == "failed" || task.status == "expired") {
                         taskTerminal = true
-                        val success = task.status == "completed"
+                        val success = task.status == "completed" || task.status == "done"
                         setTaskStatus(if (success) "✔ Completado" else "✘ ${task.status}", false)
                         tvTaskResult.text = parseResult(task) + if (task.error != null) "\\nError: ${task.error}" else ""
                         if (success) updateInstallProgress(100, "Instalación enviada correctamente")
@@ -397,7 +397,7 @@ class DeviceDetailActivity : AppCompatActivity() {
                     val taskResponse = withContext(Dispatchers.IO) { api.getTask(taskId) }
                     if (taskResponse.isSuccessful) {
                         when (taskResponse.body()?.task?.status) {
-                            "completed" -> completed = true
+                            "completed", "done" -> completed = true
                             "failed" -> {
                                 setTaskStatus("El equipo reportó un error al listar apps", false)
                                 return@launch
