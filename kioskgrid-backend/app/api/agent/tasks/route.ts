@@ -87,7 +87,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
   // El agente sólo marca "downloaded" después de guardar y validar el APK en su almacenamiento privado.
   // En ese momento se borra el objeto temporal de Storage, incluso si Control se cierra o pierde conexión.
-  let cloudApkDeleted = false;
   if (typeof body.result === 'string' && (status === 'in_progress' || status === 'awaiting_user')) {
     try {
       const progress = JSON.parse(body.result) as { phase?: string };
@@ -129,7 +128,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
             });
             if (allDevicesHaveCopy) {
               const { error: removeError } = await db.storage.from('apks').remove([objectPath]);
-              cloudApkDeleted = !removeError;
               if (removeError) console.error('Temporary APK cleanup failed:', removeError.message);
             }
           }
