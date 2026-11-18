@@ -6,6 +6,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.*
+import android.text.InputType
+import android.view.ViewGroup
+import android.graphics.Color
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -362,10 +365,59 @@ class DeviceDetailActivity : AppCompatActivity() {
             onPinClick = { app ->
                 sendTask("pin_app", app.packageName)
                 toast("Intentando fijar ${app.appName} en el launcher del equipo")
-            }
+            },
+            onParentalClick = { app -> showParentalDialog(app) }
         )
         rvInstalledApps.adapter = appsAdapter
         appsAdapter?.updateApps(sorted)
+    }
+
+
+    private fun showParentalDialog(app: InstalledApp) {
+        val options = arrayOf("Bloquear por 15 minutos", "Bloquear por 30 minutos", "Bloquear por 1 hora", "Bloquear por 2 horas", "Bloquear por 4 horas", "Bloquear hasta desactivar desde Control", "Desbloquear")
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Control parental · ${app.appName}")
+            .setItems(options) { _, which ->
+                if (which == 6) showParentalPinDialog(app, false, 0)
+                else {
+                    val minutes = when (which) {
+                        0 -> 15; 1 -> 30; 2 -> 60; 3 -> 120; 4 -> 240; else -> 0
+                    }
+                    showParentalPinDialog(app, true, minutes)
+                }
+            }.show()
+    }
+
+    private fun showParentalPinDialog(app: InstalledApp, blocking: Boolean, minutes: Int) {
+        val pin = EditText(this).apply {
+            hint = "PIN parental de 4 a 8 dígitos"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            filters = arrayOf(android.text.InputFilter.LengthFilter(8))
+            setTextColor(Color.BLACK)
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 12, 48, 0)
+            addView(pin, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(if (blocking) "Definir PIN y bloquear" else "Desbloquear aplicación")
+            .setMessage(if (blocking) "La app quedará oculta en el equipo. Para desbloquear antes de tiempo se solicitará este PIN." else "Introduce el PIN parental para retirar el bloqueo.")
+            .setView(container)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton(if (blocking) "Bloquear" else "Desbloquear") { _, _ ->
+                val value = pin.text.toString()
+                if (!value.matches(Regex("^\\d{4,8}$"))) {
+                    toast("El PIN debe tener de 4 a 8 dígitos")
+                    return@setPositiveButton
+                }
+                val payload = gson.toJson(mapOf(
+                    "packageName" to app.packageName,
+                    "pin" to value,
+                    "durationMinutes" to minutes
+                ))
+                sendTask(if (blocking) "block_app" else "unblock_app", payload)
+            }.show()
     }
 
     // ====================== UTILIDADES ======================
