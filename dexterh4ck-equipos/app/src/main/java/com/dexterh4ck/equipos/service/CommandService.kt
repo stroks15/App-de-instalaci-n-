@@ -208,36 +208,27 @@ class CommandService : Service() {
         lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
+                if (AgentTokenStore.getToken(this@CommandService).isNullOrBlank()) {
+                    Log.w(TAG, "No hay credencial de agente; inicia sesión para registrar el equipo.")
+                    return@launch
+                }
                 val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
                     timeZone = TimeZone.getTimeZone("UTC")
                 }
-                val now = timestampFormat.format(Date())
-                val device = DeviceRegistration(
-                    device_id = config.deviceId,
-                    hardware_id = config.deviceId,
+                val heartbeat = DeviceHeartbeat(
                     name = config.deviceName,
-                    type = "android_tv",
-                    platform = "fireos".takeIf { Build.MANUFACTURER.contains("Amazon", ignoreCase = true) } ?: "android",
-                    app_version = "1.0.0",
                     status = "online",
-                    last_seen = now
+                    last_seen = timestampFormat.format(Date())
                 )
-                val response = api.registerDevice(device)
+                val response = api.heartbeat(heartbeat)
                 if (!response.isSuccessful) {
-                    Log.e(TAG, "Registro rechazado: HTTP ${response.code()}")
+                    Log.e(TAG, "Heartbeat rechazado: HTTP ${response.code()}")
                     return@launch
                 }
-                val token = response.body()?.agent_token
-                if (!token.isNullOrBlank()) {
-                    if (!AgentTokenStore.saveToken(this@CommandService, token)) {
-                        Log.e(TAG, "No se pudo guardar la credencial de forma cifrada")
-                        return@launch
-                    }
-                }
                 lastRegistrationAt = System.currentTimeMillis()
-                Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
+                Log.d(TAG, "Heartbeat actualizado para ${config.deviceName}")
             } catch (e: Exception) {
-                Log.e(TAG, "Error registrando equipo: ${e.message}")
+                Log.e(TAG, "Error en heartbeat: ${e.message}")
             } finally {
                 registrationInProgress.set(false)
             }
@@ -266,7 +257,7 @@ class CommandService : Service() {
         if (config.deviceId.isEmpty()) return
         val token = AgentTokenStore.getToken(this)
         if (token.isNullOrBlank()) {
-            registerDevice()
+            Log.w(TAG, "No hay credencial del agente; se omite el polling hasta iniciar sesión.")
             return
         }
         val response = api.getTasks(config.deviceId, "queued")
