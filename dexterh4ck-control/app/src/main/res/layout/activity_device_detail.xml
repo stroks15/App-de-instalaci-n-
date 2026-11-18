@@ -200,6 +200,16 @@
             android:layout_marginBottom="8dp" />
 
         <Button
+            android:id="@+id/btnAdbCommand"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enviar comando ADB"
+            android:textColor="@color/white"
+            android:backgroundTint="#5146B8"
+            android:padding="14dp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
             android:id="@+id/btnReboot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
