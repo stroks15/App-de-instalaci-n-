@@ -38,6 +38,7 @@
         <activity android:name=".ui.DeviceDetailActivity" android:exported="false" />
         <activity android:name=".ui.ApkPickerActivity" android:exported="false" />
         <activity android:name=".ui.BulkManagementActivity" android:exported="false" />
+        <activity android:name=".ui.GithubApkActivity" android:exported="false" />
 
     </application>
 </manifest>
