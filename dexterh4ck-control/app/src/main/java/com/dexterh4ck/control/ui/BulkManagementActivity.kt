@@ -177,11 +177,11 @@ class BulkManagementActivity : AppCompatActivity() {
                                 json.optInt("progress", 0) to json.optString("phase")
                             }.getOrDefault(0 to "")
                             progressByTask[taskId] = info.first.coerceIn(0, 100)
-                            if (info.second == "downloaded" || task.status in listOf("completed", "failed", "expired")) {
+                            if (info.second == "downloaded" || task.status in listOf("completed", "done", "failed", "expired")) {
                                 downloaded.add(taskId)
                                 progressByTask[taskId] = 100
                             }
-                            if (task.status in listOf("completed", "failed", "expired")) terminal.add(taskId)
+                            if (task.status in listOf("completed", "done", "failed", "expired")) terminal.add(taskId)
                         } catch (_: Exception) { }
                     }
                     if (!cloudDeleted && downloaded.size == taskIds.size) {
