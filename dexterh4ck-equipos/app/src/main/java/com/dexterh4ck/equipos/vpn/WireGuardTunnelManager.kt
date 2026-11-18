@@ -7,9 +7,9 @@ import com.wireguard.config.Config
 import java.io.BufferedReader
 import java.io.StringReader
 
-/** Thin wrapper over the official embeddable WireGuard Android backend. */
-class WireGuardTunnelManager(context: Context) {
-    private val backend = GoBackend(context.applicationContext)
+/** Process-wide backend so Activity and foreground service share one tunnel instance. */
+object WireGuardTunnelManager {
+    private var backend: GoBackend? = null
     private val tunnel = object : Tunnel {
         override fun getName(): String = "kioskgrid-equipos"
         override fun onStateChange(newState: Tunnel.State) {
@@ -17,12 +17,15 @@ class WireGuardTunnelManager(context: Context) {
         }
     }
 
-    fun connect(configuration: String) {
+    @Synchronized
+    fun connect(context: Context, configuration: String) {
         val parsed = Config.parse(BufferedReader(StringReader(configuration)))
-        backend.setState(tunnel, Tunnel.State.UP, parsed)
+        val instance = backend ?: GoBackend(context.applicationContext).also { backend = it }
+        instance.setState(tunnel, Tunnel.State.UP, parsed)
     }
 
+    @Synchronized
     fun disconnect() {
-        backend.setState(tunnel, Tunnel.State.DOWN, null)
+        backend?.setState(tunnel, Tunnel.State.DOWN, null)
     }
 }
