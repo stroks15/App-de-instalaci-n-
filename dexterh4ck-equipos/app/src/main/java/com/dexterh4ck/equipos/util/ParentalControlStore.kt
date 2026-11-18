@@ -10,15 +10,15 @@ object ParentalControlStore {
     fun block(context: Context, packageName: String, pin: String, minutes: Int): String {
         require(packageName.matches(Regex("^[A-Za-z0-9_.]+$"))) { "Paquete inválido" }
         require(pin.matches(Regex("^\\d{4,8}$"))) { "El PIN debe contener de 4 a 8 dígitos" }
-        require(minutes in 1..10080) { "Duración no válida" }
+        require(minutes in 0..10080) { "Duración no válida" }
         val result = DevicePolicyHelper.setAppHidden(context, packageName, true)
         check(!result.startsWith("BLOQUEO NO DISPONIBLE") && !result.startsWith("Error")) { result }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.edit()
             .putString("pin:$packageName", sha256(pin))
-            .putLong("until:$packageName", System.currentTimeMillis() + minutes * 60_000L)
+            .putLong("until:$packageName", if (minutes == 0) Long.MAX_VALUE else System.currentTimeMillis() + minutes * 60_000L)
             .apply()
-        return "$result. Bloqueo temporal activado por $minutes minutos."
+        return if (minutes == 0) "$result. Bloqueo activo hasta desactivarlo desde Control." else "$result. Bloqueo temporal activado por $minutes minutos."
     }
 
     fun unblock(context: Context, packageName: String, pin: String, automatic: Boolean = false): String {
