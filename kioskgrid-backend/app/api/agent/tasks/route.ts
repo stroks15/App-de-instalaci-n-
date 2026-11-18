@@ -12,6 +12,23 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const db = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  // Expire queued install requests server-side as a backstop if the TV is offline.
+  const { error: expiryError } = await (db.from('tasks') as any).update({
+    status: 'expired',
+    error: 'Solicitud cancelada: no fue aceptada en 48 horas.',
+    updated_at: now
+  }).eq('device_id', auth.device.id)
+    .eq('type', 'install')
+    .eq('status', 'queued')
+    .not('expires_at', 'is', null)
+    .lte('expires_at', now);
+
+  if (expiryError) {
+    return NextResponse.json({ error: 'No se pudieron caducar las instalaciones pendientes' }, { status: 500 });
+  }
+
   const { data, error } = await (db.from('tasks') as any).select('*')
     .eq('device_id', auth.device.id)
     .eq('status', 'queued')
@@ -45,7 +62,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
   const id = typeof body.id === 'string' ? body.id : '';
   const status = typeof body.status === 'string' ? body.status : '';
-  if (!id || !['in_progress', 'completed', 'failed'].includes(status)) {
+  if (!id || !['in_progress', 'awaiting_user', 'completed', 'failed', 'expired'].includes(status)) {
     return NextResponse.json({ error: 'Actualización de tarea inválida' }, { status: 400 });
   }
 
