@@ -50,7 +50,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adbStatus: TextView
     private lateinit var connectionStatus: TextView
     private lateinit var deviceNameHeader: TextView
-    private var tunnelManager: WireGuardTunnelManager? = null
     private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) connectConfiguredVpn()
         else connectionStatus.text = "Cuenta registrada; falta autorizar el permiso VPN de Android."
@@ -166,8 +165,7 @@ class MainActivity : AppCompatActivity() {
                     PersistentKeepalive = 25
                 """.trimIndent()
                 withContext(Dispatchers.IO) {
-                    if (tunnelManager == null) tunnelManager = WireGuardTunnelManager(this@MainActivity)
-                    tunnelManager!!.connect(configuration)
+                    WireGuardTunnelManager.connect(this@MainActivity, configuration)
                     VpnHealthServer.start(this@MainActivity, ip)
                 }
                 connectionStatus.text = "WireGuard conectado · $ip"
