@@ -8,14 +8,16 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest): Promise<Response> {
   const auth = await requireUser(request);
-  if (auth.response || !auth.user) return auth.response;
+  if (auth.response) return auth.response;
+  if (!auth.user) return NextResponse.json({ error: 'Autenticación requerida' }, { status: 401 });
+  const user = auth.user;
 
   try {
     const body = await request.json();
     const code = String(body.pairing_code || '').trim().toUpperCase();
     const db = getSupabaseAdmin();
     const limited = await consumePairingAttempt(db, request, [
-      `user:${auth.user.id}`,
+      `user:${user.id}`,
       `code:${createHash('sha256').update(code).digest('hex')}`
     ]);
     if (!limited.allowed) {
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const now = new Date().toISOString();
     const { data, error } = await (db.from('devices') as any)
-      .update({ owner_id: auth.user.id, paired_at: now, pairing_code: null, pairing_expires_at: null, updated_at: now })
+      .update({ owner_id: user.id, paired_at: now, pairing_code: null, pairing_expires_at: null, updated_at: now })
       .eq('pairing_code', code)
       .is('owner_id', null)
       .gt('pairing_expires_at', now)
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (!data) return NextResponse.json({ error: 'Código incorrecto, expirado o ya vinculado' }, { status: 404 });
 
     const { error: auditError } = await (db.from('device_audit_logs') as any).insert({
-      device_id: data.id, owner_id: auth.user.id, actor_id: auth.user.id, action: 'device_paired', metadata: {}
+      device_id: data.id, owner_id: user.id, actor_id: user.id, action: 'device_paired', metadata: {}
     });
     if (auditError) console.error('No se pudo registrar auditoría de pairing', auditError);
 
