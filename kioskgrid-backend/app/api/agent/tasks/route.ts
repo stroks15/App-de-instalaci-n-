@@ -22,7 +22,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     return NextResponse.json({ error: 'No se pudieron consultar las tareas' }, { status: 500 });
   }
 
-  await db.from('devices')
+  await (db.from('devices') as any)
     .update({ status: 'online', last_seen: new Date().toISOString() })
     .eq('id', auth.device.id);
 
