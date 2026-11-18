@@ -562,8 +562,8 @@ class CommandService : Service() {
         } else {
             data?.optString("allowedPackages", "") ?: ""
         }
-        DevicePolicyHelper.setLockTaskWhitelist(this)
         KioskManager.enable(this, packages)
+        DevicePolicyHelper.setLockTaskWhitelist(this)
         return "Modo kiosk activado"
     }
 
