@@ -21,7 +21,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     updated_at: now
   }).eq('device_id', auth.device.id)
     .eq('type', 'install')
-    .eq('status', 'queued')
+    .in('status', ['queued', 'awaiting_user'])
     .not('expires_at', 'is', null)
     .lte('expires_at', now);
 
