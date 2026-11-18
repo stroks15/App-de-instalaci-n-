@@ -320,12 +320,20 @@ class CommandService : Service() {
             expirePendingInstall(task.id)
             return
         }
-        prefs.edit().putString("${key}_url", task.payload).putLong("${key}_expires", expiresAt).apply()
-        if (!prefs.getBoolean("${key}_reported", false)) {
-            val reported = reportTask(task.id, "awaiting_user", error = "Esperando aceptación local; vence a las 48 horas de creada.")
-            if (reported) prefs.edit().putBoolean("${key}_reported", true).apply()
+        try {
+            // Descarga primero al almacenamiento privado del TV; después Control puede borrar el temporal en la nube.
+            val apkFile = downloadApk(task.id, task.payload)
+            reportTask(task.id, "awaiting_user", result = JSONObject().apply {
+                put("phase", "downloaded")
+                put("progress", 100)
+                put("message", "APK descargado localmente; esperando aceptación en la TV.")
+            }.toString(), error = "Esperando aceptación local; vence a las 48 horas.")
+            prefs.edit().putString("${key}_file", apkFile.absolutePath)
+                .putLong("${key}_expires", expiresAt).putBoolean("${key}_reported", true).apply()
+            showPendingInstallNotification(task.id, apkFile.name, expiresAt)
+        } catch (error: Exception) {
+            reportTask(task.id, "failed", error = "No se pudo descargar el APK: ${error.message}")
         }
-        showPendingInstallNotification(task.id, task.payload, expiresAt)
     }
 
     private fun showPendingInstallNotification(taskId: String, apkUrl: String, expiresAt: Long) {
@@ -362,30 +370,39 @@ class CommandService : Service() {
     private suspend fun acceptPendingInstall(taskId: String) {
         val prefs = pendingInstallPrefs()
         val key = "task_$taskId"
-        val url = prefs.getString("${key}_url", null)
+        val localPath = prefs.getString("${key}_file", null)
         val expiry = prefs.getLong("${key}_expires", 0L)
-        if (url.isNullOrBlank()) return
+        if (localPath.isNullOrBlank()) return
         if (System.currentTimeMillis() >= expiry) {
+            expirePendingInstall(taskId)
+            return
+        }
+        val apkFile = File(localPath)
+        if (!apkFile.isFile || apkFile.length() <= 0L) {
             expirePendingInstall(taskId)
             return
         }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
-        prefs.edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        prefs.edit().remove("${key}_file").remove("${key}_expires").remove("${key}_reported").apply()
         reportTask(taskId, "in_progress")
         try {
-            val result = installApp(taskId, url)
-            reportTask(taskId, "completed", result = "\"${escapeJson(result)}\"")
+            val result = installApkFile(taskId, apkFile)
+            reportTask(taskId, "completed", result = "\" ${escapeJson(result)} \"".replace("\" ", "\"").replace(" \"", "\""))
             updateNotification("completed", "install")
         } catch (e: Exception) {
             reportTask(taskId, "failed", error = e.message ?: "Error instalando APK")
             updateNotification("failed", "install")
+        } finally {
+            apkFile.delete()
         }
     }
 
     private suspend fun expirePendingInstall(taskId: String) {
         val key = "task_$taskId"
-        pendingInstallPrefs().edit().remove("${key}_url").remove("${key}_expires").remove("${key}_reported").apply()
+        val prefs = pendingInstallPrefs()
+        prefs.getString("${key}_file", null)?.let { File(it).delete() }
+        prefs.edit().remove("${key}_file").remove("${key}_expires").remove("${key}_reported").apply()
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .cancel(pendingInstallNotificationId(taskId))
         reportTask(taskId, "expired", error = "Solicitud cancelada: no fue aceptada en 48 horas.")
@@ -399,8 +416,8 @@ class CommandService : Service() {
             val taskId = expiryKey.removePrefix("task_").removeSuffix("_expires")
             if (expires > 0L && now >= expires) expirePendingInstall(taskId)
             else {
-                val url = prefs.getString("task_${taskId}_url", null)
-                if (!url.isNullOrBlank()) showPendingInstallNotification(taskId, url, expires)
+                val localPath = prefs.getString("task_${taskId}_file", null)
+                if (!localPath.isNullOrBlank()) showPendingInstallNotification(taskId, File(localPath).name, expires)
             }
         }
     }
@@ -427,6 +444,11 @@ class CommandService : Service() {
         if (apkUrl.isBlank()) throw IllegalStateException("URL de APK vacía")
         reportInstallProgress(taskId, "download", 0, 0L)
         val apkFile = downloadApk(taskId, apkUrl)
+        return installApkFile(taskId, apkFile)
+    }
+
+    private suspend fun installApkFile(taskId: String, apkFile: File): String {
+        if (!apkFile.isFile || apkFile.length() <= 0L) throw IOException("El APK local no existe o está vacío")
         try {
             reportInstallProgress(taskId, "install", 90, apkFile.length())
             val apkUri: Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
