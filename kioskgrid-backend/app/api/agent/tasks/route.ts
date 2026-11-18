@@ -141,5 +141,5 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
   }
 
-  return NextResponse.json({ task: data, cloud_apk_deleted: cloudApkDeleted });
+  return NextResponse.json({ task: data });
 }
