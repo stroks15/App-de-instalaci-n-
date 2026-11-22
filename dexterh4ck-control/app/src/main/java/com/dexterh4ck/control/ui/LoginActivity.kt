@@ -137,13 +137,16 @@ class LoginActivity : AppCompatActivity() {
                     val body = JSONObject().put("email", user).put("password", pass)
                         .toString().toRequestBody("application/json".toMediaType())
                     val req = Request.Builder()
-                        .url("${ApiConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/token?grant_type=password")
-                        .header("apikey", "sb_publishable_3GDyrM0JTII5TPZ6sAOJnA_YDtxjbiw")
+                        .url("${ApiConfig.BASE_URL.trimEnd('/')}/api/auth/login")
                         .post(body).build()
-                    OkHttpClient().newCall(req).execute().use { response ->
+                    OkHttpClient.Builder()
+                        .connectTimeout(25, TimeUnit.SECONDS)
+                        .readTimeout(35, TimeUnit.SECONDS)
+                        .callTimeout(45, TimeUnit.SECONDS)
+                        .build().newCall(req).execute().use { response ->
                         val payload = JSONObject(response.body?.string() ?: "{}")
                         if (!response.isSuccessful) throw IllegalStateException(
-                            payload.optString("msg", payload.optString("message", "Credenciales incorrectas"))
+                            payload.optString("error", payload.optString("message", "Error de autenticación HTTP ${response.code}"))
                         )
                         payload
                     }
