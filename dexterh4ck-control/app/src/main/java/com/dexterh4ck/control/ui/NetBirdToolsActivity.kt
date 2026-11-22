@@ -48,7 +48,7 @@ class NetBirdToolsActivity : ComponentActivity() {
     private var peerText by mutableStateOf("")
     private var output by mutableStateOf("Añade las IP NetBird de tus equipos, una por línea.")
     private var shellCommand by mutableStateOf("getprop ro.product.model")
-    private var packageName by mutableStateOf("")
+    private var targetPackageName by mutableStateOf("")
     private var peerAlias by mutableStateOf("Equipo Android")
     private var savedPeers by mutableStateOf<List<NetBirdPeerEntity>>(emptyList())
     private var busy by mutableStateOf(false)
@@ -106,10 +106,10 @@ class NetBirdToolsActivity : ComponentActivity() {
                         Button(enabled = !busy && peers().isNotEmpty() && shellCommand.isNotBlank(), onClick = { runAction("Ejecutando comando") { adb.shell(it, shellCommand) } }) { Text("Ejecutar") }
                         Button(enabled = !busy && peers().isNotEmpty(), onClick = { runAction("Comprobando Device Owner") { operations.checkDeviceOwnerPrerequisites(it).let { check -> "pm list users:\n${check.usersOutput}\ndumpsys account:\n${check.accountsOutput}\nCuentas detectadas: ${check.likelyBlockedByAccounts}" } } }) { Text("Precheck Owner") }
                     }
-                    OutlinedTextField(value = packageName, onValueChange = { packageName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Paquete Android") })
+                    OutlinedTextField(value = targetPackageName, onValueChange = { targetPackageName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Paquete Android") })
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(enabled = !busy && peers().isNotEmpty() && packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")), onClick = { runAction("Limpiando datos") { operations.clearAppData(it, packageName) } }) { Text("Limpiar datos") }
-                        Button(enabled = !busy && peers().isNotEmpty() && packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")), onClick = { runAction("Desinstalando") { operations.uninstallApp(it, packageName) } }) { Text("Desinstalar") }
+                        Button(enabled = !busy && peers().isNotEmpty() && targetPackageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")), onClick = { runAction("Limpiando datos") { operations.clearAppData(it, targetPackageName) } }) { Text("Limpiar datos") }
+                        Button(enabled = !busy && peers().isNotEmpty() && targetPackageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")), onClick = { runAction("Desinstalando") { operations.uninstallApp(it, targetPackageName) } }) { Text("Desinstalar") }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(enabled = !busy && peers().isNotEmpty(), onClick = { loadTelemetry() }) { Text("Telemetría") }
