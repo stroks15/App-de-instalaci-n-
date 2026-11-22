@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         serverUrl.setText(prefs.getString(AgentConfig.KEY_SERVER_URL, AgentConfig.DEFAULT_SERVER_URL))
         deviceName.setText(prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo TV"))
         email = findViewById(R.id.etEmail)
+        if (email.text.isNullOrBlank()) email.setText("dexterh4ck@gmail.com")
         password = findViewById(R.id.etPassword)
         deviceNameHeader = findViewById(R.id.tvDeviceNameHeader)
         deviceNameHeader.text = prefs.getString(AgentConfig.KEY_DEVICE_NAME, "Equipo Android")
