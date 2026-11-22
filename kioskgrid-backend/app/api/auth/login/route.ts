@@ -28,6 +28,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
       user_id: data.user.id,
       expires_at: data.session.expires_at,
     }, {
