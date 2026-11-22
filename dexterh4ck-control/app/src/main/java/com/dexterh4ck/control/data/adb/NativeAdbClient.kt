@@ -26,7 +26,8 @@ class NativeAdbClient(context: Context) {
         return if (privateKey.exists() && publicKey.exists()) {
             AdbKeyPair.read(privateKey, publicKey)
         } else {
-            AdbKeyPair.create(privateKey, publicKey)
+            AdbKeyPair.generate(privateKey, publicKey)
+            AdbKeyPair.read(privateKey, publicKey)
         }
     }
 
