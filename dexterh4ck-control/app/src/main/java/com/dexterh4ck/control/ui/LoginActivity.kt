@@ -1,14 +1,18 @@
 package com.dexterh4ck.control.ui
 
 import android.content.Intent
+import android.app.Activity
+import android.net.VpnService
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.dexterh4ck.control.data.AuthStore
 import com.dexterh4ck.control.data.ApiConfig
+import com.dexterh4ck.control.data.ControlVpnBootstrap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -17,6 +21,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var email: EditText
@@ -24,12 +29,19 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var submit: Button
 
     private val googleRedirect = "com.dexterh4ck.control://login-callback"
+    private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) connectVpnAndContinue()
+        else {
+            Toast.makeText(this, "VPN no autorizada; Control continuará sin túnel privado.", Toast.LENGTH_LONG).show()
+            openDashboard()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (handleOAuthCallback(intent)) return
         if (!AuthStore.accessToken(this).isNullOrBlank()) {
-            openDashboard()
+            registerAndContinue()
             return
         }
 
@@ -108,7 +120,7 @@ class LoginActivity : AppCompatActivity() {
             return true
         }
         AuthStore.save(this, access, refresh)
-        openDashboard()
+        registerAndContinue()
         return true
     }
 
@@ -126,13 +138,16 @@ class LoginActivity : AppCompatActivity() {
                     val body = JSONObject().put("email", user).put("password", pass)
                         .toString().toRequestBody("application/json".toMediaType())
                     val req = Request.Builder()
-                        .url("${ApiConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/token?grant_type=password")
-                        .header("apikey", "sb_publishable_3GDyrM0JTII5TPZ6sAOJnA_YDtxjbiw")
+                        .url("${ApiConfig.BASE_URL.trimEnd('/')}/api/auth/login")
                         .post(body).build()
-                    OkHttpClient().newCall(req).execute().use { response ->
+                    OkHttpClient.Builder()
+                        .connectTimeout(25, TimeUnit.SECONDS)
+                        .readTimeout(35, TimeUnit.SECONDS)
+                        .callTimeout(45, TimeUnit.SECONDS)
+                        .build().newCall(req).execute().use { response ->
                         val payload = JSONObject(response.body?.string() ?: "{}")
                         if (!response.isSuccessful) throw IllegalStateException(
-                            payload.optString("msg", payload.optString("message", "Credenciales incorrectas"))
+                            payload.optString("error", payload.optString("message", "Error de autenticación HTTP ${response.code}"))
                         )
                         payload
                     }
@@ -141,10 +156,53 @@ class LoginActivity : AppCompatActivity() {
                 val refresh = result.optString("refresh_token")
                 if (access.isBlank() || refresh.isBlank()) throw IllegalStateException("No se recibió una sesión válida")
                 AuthStore.save(this@LoginActivity, access, refresh)
-                openDashboard()
+                registerAndContinue()
             } catch (e: Exception) {
                 Toast.makeText(this@LoginActivity, e.message ?: "No se pudo iniciar sesión", Toast.LENGTH_LONG).show()
                 submit.isEnabled = true
+            }
+        }
+    }
+
+    private fun registerAndContinue() {
+        val token = AuthStore.accessToken(this)
+        if (token.isNullOrBlank()) {
+            openDashboard()
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                val registration = withContext(Dispatchers.IO) {
+                    ControlVpnBootstrap.register(this@LoginActivity, token)
+                }
+                val vpn = registration.optJSONObject("vpn")
+                if (vpn?.optBoolean("enabled") == true) {
+                    val permission = VpnService.prepare(this@LoginActivity)
+                    if (permission != null) vpnPermissionLauncher.launch(permission)
+                    else connectVpnAndContinue()
+                } else {
+                    val status = vpn?.optString("status") ?: "not_configured"
+                    Toast.makeText(this@LoginActivity, "Control registrado. VPN: $status", Toast.LENGTH_LONG).show()
+                    openDashboard()
+                }
+            } catch (error: Exception) {
+                Toast.makeText(this@LoginActivity, "No se pudo registrar Control en la VPN: ${error.message}", Toast.LENGTH_LONG).show()
+                openDashboard()
+            }
+        }
+    }
+
+    private fun connectVpnAndContinue() {
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    ControlVpnBootstrap.connect(this@LoginActivity)
+                }
+                Toast.makeText(this@LoginActivity, "WireGuard conectado.", Toast.LENGTH_SHORT).show()
+            } catch (error: Exception) {
+                Toast.makeText(this@LoginActivity, "VPN no conectada: ${error.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                openDashboard()
             }
         }
     }

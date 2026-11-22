@@ -5,6 +5,7 @@ import android.content.*
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.VpnService
 import android.os.*
 import android.os.StatFs
 import android.provider.Settings
@@ -13,7 +14,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.dexterh4ck.equipos.data.*
 import com.dexterh4ck.equipos.util.DevicePolicyHelper
-import com.dexterh4ck.equipos.util.PairingCode
+import com.dexterh4ck.equipos.data.WireGuardKeyStore
+import com.dexterh4ck.equipos.vpn.WireGuardTunnelManager
+import com.dexterh4ck.equipos.vpn.VpnHealthServer
 import com.dexterh4ck.equipos.util.KioskManager
 import com.dexterh4ck.equipos.util.NotifyHelper
 import com.dexterh4ck.equipos.util.UsageStatsHelper
@@ -92,6 +95,7 @@ class CommandService : Service() {
         config = loadConfig()
         setupNotificationChannel()
         api = createApiClient(config.serverUrl)
+        startStoredVpnIfAuthorized()
         registerDevice()
         startPolling()
     }
@@ -117,6 +121,7 @@ class CommandService : Service() {
     override fun onDestroy() {
         runCatching { if (agentWakeLock?.isHeld == true) agentWakeLock?.release() }
         agentWakeLock = null
+        VpnHealthServer.stop()
         scope.cancel()
         super.onDestroy()
     }
@@ -162,6 +167,38 @@ class CommandService : Service() {
             .create(KioskApi::class.java)
     }
 
+    private fun startStoredVpnIfAuthorized() {
+        if (VpnService.prepare(this) != null) return
+        val prefs = getSharedPreferences(AgentConfig.PREF_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("vpn_enabled", false)) return
+        val ip = prefs.getString("assigned_vpn_ip", null)?.substringBefore('/').orEmpty()
+        val endpoint = prefs.getString("vpn_endpoint", null).orEmpty()
+        val serverKey = prefs.getString("vpn_server_public_key", null).orEmpty()
+        if (ip.isBlank() || endpoint.isBlank() || serverKey.isBlank()) return
+        scope.launch {
+            runCatching {
+                val pair = WireGuardKeyStore.getOrCreate(this@CommandService)
+                val wireGuardConfig = """
+                    [Interface]
+                    PrivateKey = ${pair.privateKey.toBase64()}
+                    Address = $ip/32
+                    MTU = 1280
+
+                    [Peer]
+                    PublicKey = $serverKey
+                    Endpoint = $endpoint
+                    AllowedIPs = 10.88.0.0/16
+                    PersistentKeepalive = 25
+                """.trimIndent()
+                WireGuardTunnelManager.connect(this@CommandService, wireGuardConfig)
+                VpnHealthServer.start(this@CommandService, ip)
+                Log.i(TAG, "WireGuard tunnel restored for $ip")
+            }.onFailure {
+                Log.e(TAG, "WireGuard restore failed: ${it.message}")
+            }
+        }
+    }
+
     // ====================== REGISTRO DEL EQUIPO ======================
 
     private fun registerDevice() {
@@ -169,37 +206,27 @@ class CommandService : Service() {
         lastRegistrationAt = System.currentTimeMillis()
         scope.launch {
             try {
+                if (AgentTokenStore.getToken(this@CommandService).isNullOrBlank()) {
+                    Log.w(TAG, "No hay credencial de agente; inicia sesión para registrar el equipo.")
+                    return@launch
+                }
                 val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
                     timeZone = TimeZone.getTimeZone("UTC")
                 }
-                val now = timestampFormat.format(Date())
-                val device = DeviceRegistration(
-                    device_id = config.deviceId,
-                    hardware_id = config.deviceId,
-                    pairing_code = PairingCode.getOrCreate(this@CommandService),
+                val heartbeat = DeviceHeartbeat(
                     name = config.deviceName,
-                    type = "android_tv",
-                    platform = "fireos".takeIf { Build.MANUFACTURER.contains("Amazon", ignoreCase = true) } ?: "android",
-                    app_version = "1.0.0",
                     status = "online",
-                    last_seen = now
+                    last_seen = timestampFormat.format(Date())
                 )
-                val response = api.registerDevice(device)
+                val response = api.heartbeat(heartbeat)
                 if (!response.isSuccessful) {
-                    Log.e(TAG, "Registro rechazado: HTTP ${response.code()}")
+                    Log.e(TAG, "Heartbeat rechazado: HTTP ${response.code()}")
                     return@launch
                 }
-                val token = response.body()?.agent_token
-                if (!token.isNullOrBlank()) {
-                    if (!AgentTokenStore.saveToken(this@CommandService, token)) {
-                        Log.e(TAG, "No se pudo guardar la credencial de forma cifrada")
-                        return@launch
-                    }
-                }
                 lastRegistrationAt = System.currentTimeMillis()
-                Log.d(TAG, "Equipo registrado: ${config.deviceName} (${config.deviceId})")
+                Log.d(TAG, "Heartbeat actualizado para ${config.deviceName}")
             } catch (e: Exception) {
-                Log.e(TAG, "Error registrando equipo: ${e.message}")
+                Log.e(TAG, "Error en heartbeat: ${e.message}")
             } finally {
                 registrationInProgress.set(false)
             }
@@ -228,7 +255,7 @@ class CommandService : Service() {
         if (config.deviceId.isEmpty()) return
         val token = AgentTokenStore.getToken(this)
         if (token.isNullOrBlank()) {
-            registerDevice()
+            Log.w(TAG, "No hay credencial del agente; se omite el polling hasta iniciar sesión.")
             return
         }
         val response = api.getTasks(config.deviceId, "queued")
@@ -668,13 +695,32 @@ class CommandService : Service() {
 
     /** Ejecuta sólo diagnósticos ADB predefinidos y únicamente si el equipo ofrece su binario su. */
     private fun runAdbDiagnostic(payload: String): String {
-        val command = payload.trim()
-        val allowed = setOf(
+        val command = payload.trim().removePrefix("adb shell ").trim()
+        require(command.isNotBlank() && command.length <= 256) { "Comando vacío o demasiado largo." }
+        // This is a constrained local root-shell bridge, not a remote adbd session.
+        if (command == "dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver" &&
+            DevicePolicyHelper.isDeviceOwner(this)) {
+            return "Device Owner ya está activo en este equipo."
+        }
+        val allowedExact = setOf(
             "getprop", "df -h", "free -h", "dumpsys battery",
             "dumpsys meminfo", "pm list packages", "wm size", "wm density",
-            "settings get global airplane_mode_on", "settings get global stay_on_while_plugged_in"
+            "settings get global airplane_mode_on",
+            "settings get global stay_on_while_plugged_in",
+            "dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver"
         )
-        require(command in allowed) { "Comando no permitido. Usa uno de los diagnósticos disponibles." }
+        val allowedPattern = listOf(
+            Regex("^getprop [A-Za-z0-9._-]{1,120}$"),
+            Regex("^pm list packages( -[A-Za-z]+)?$"),
+            Regex("^dumpsys package [A-Za-z0-9._]{1,180}$"),
+            Regex("^settings get global [A-Za-z0-9_]{1,100}$"),
+            Regex("^wm (size|density)$")
+        )
+        val safe = command in allowedExact || allowedPattern.any { it.matches(command) }
+        val forbidden = listOf(";", "|", "&", ">", "<", "`", "$", "\n", "\r")
+        require(safe && forbidden.none { command.contains(it) }) {
+            "Comando no permitido. Se bloquean scripts, operadores y redirecciones."
+        }
         val outputFile = File(cacheDir, "adb_diagnostic_${System.currentTimeMillis()}.txt")
         val process = ProcessBuilder("su", "-c", command)
             .redirectErrorStream(true).redirectOutput(outputFile).start()
@@ -686,7 +732,7 @@ class CommandService : Service() {
         val output = outputFile.takeIf { it.exists() }?.readText()?.take(8000).orEmpty()
         outputFile.delete()
         if (process.exitValue() != 0) {
-            throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su." })
+            throw IllegalStateException(output.ifBlank { "No se pudo ejecutar. El equipo necesita root/su y Android debe permitir la operación." })
         }
         return output.ifBlank { "Comando ejecutado sin salida." }
     }

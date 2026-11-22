@@ -7,6 +7,9 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.AdapterView
 import android.text.InputType
 import android.graphics.Color
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +55,7 @@ class DeviceDetailActivity : AppCompatActivity() {
     private lateinit var rvInstalledApps: RecyclerView
     private lateinit var tvNoApps: TextView
     private var appsAdapter: InstalledAppAdapter? = null
+    private var selectedPackages: Set<String> = emptySet()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val apkPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -112,6 +116,27 @@ class DeviceDetailActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnRefreshApps).setOnClickListener { refreshAppsList() }
         findViewById<Button>(R.id.btnDeviceInfo).setOnClickListener { sendTask("device_info", "") }
         findViewById<Button>(R.id.btnAdbCommand).setOnClickListener { showAdbCommandDialog() }
+        findViewById<EditText>(R.id.etAppSearch).addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = filterApps()
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        findViewById<Spinner>(R.id.spAppFilter).onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = filterApps()
+        }
+        findViewById<Button>(R.id.btnDebloatSelected).setOnClickListener {
+            val packages = appsAdapter?.selectedPackages().orEmpty()
+            if (packages.isNotEmpty()) confirmAction("¿Desinstalar ${packages.size} aplicaciones seleccionadas?") {
+                packages.forEach { sendTask("uninstall", it) }
+                appsAdapter?.clearSelection()
+            }
+        }
+        findViewById<Button>(R.id.btnSetDeviceOwner).setOnClickListener {
+            confirmAction("Enviar la orden Device Owner al agente. Requiere root/su y que Android permita el aprovisionamiento inicial.") {
+                sendTask("adb_command", "adb shell dpm set-device-owner com.dexterh4ck.equipos/.service.KioskDeviceAdminReceiver")
+            }
+        }
         findViewById<Button>(R.id.btnReboot).setOnClickListener {
             confirmAction("¿Reiniciar el equipo?") { sendTask("reboot", "") }
         }
@@ -344,15 +369,47 @@ class DeviceDetailActivity : AppCompatActivity() {
             .joinToString("") { "%02x".format(it) }
 
     private fun showAdbCommandDialog() {
-        val commands = arrayOf(
-            "getprop", "df -h", "free -h", "dumpsys battery", "dumpsys meminfo",
-            "pm list packages", "wm size", "wm density",
-            "settings get global airplane_mode_on", "settings get global stay_on_while_plugged_in"
+        val input = EditText(this).apply {
+            hint = "Ej. getprop ro.build.version.release"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setTextColor(Color.BLACK)
+            minLines = 2
+        }
+        val presets = arrayOf(
+            "getprop",
+            "df -h",
+            "free -h",
+            "dumpsys battery",
+            "dumpsys meminfo",
+            "pm list packages",
+            "wm size",
+            "wm density"
         )
-        AlertDialog.Builder(this).setTitle("Diagnóstico ADB")
-            .setMessage("Selecciona un comando de diagnóstico. La ejecución requiere que el equipo admita el servicio de diagnóstico.")
-            .setItems(commands) { _, which -> sendTask("adb_command", commands[which]) }
-            .setNegativeButton("Cancelar", null).show()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 8, 48, 0)
+            addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(TextView(this@DeviceDetailActivity).apply {
+                text = "Se ejecuta en el agente mediante su/root. Solo se aceptan comandos permitidos; no es un puente ADB remoto."
+                textSize = 12f
+                setTextColor(Color.DKGRAY)
+            })
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Consola de comandos")
+            .setView(layout)
+            .setNeutralButton("Diagnósticos") { _, _ ->
+                AlertDialog.Builder(this).setTitle("Comandos rápidos")
+                    .setItems(presets) { _, which -> sendTask("adb_command", presets[which]) }
+                    .setNegativeButton("Cancelar", null).show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Ejecutar") { _, _ ->
+                val command = input.text.toString().trim()
+                if (command.isBlank()) toast("Escribe un comando")
+                else sendTask("adb_command", command)
+            }
+            .show()
     }
 
     private fun renderDeviceResources(raw: String?) {
@@ -424,13 +481,16 @@ class DeviceDetailActivity : AppCompatActivity() {
     private fun showApps(apps: List<InstalledApp>) {
         if (apps.isEmpty()) {
             tvNoApps.visibility = View.VISIBLE
+            selectedPackages = emptySet()
             appsAdapter = null
             rvInstalledApps.adapter = null
+            updateDebloatButton()
             return
         }
         tvNoApps.visibility = View.GONE
         val sorted = apps.sortedBy { it.appName.lowercase() }
-        appsAdapter = InstalledAppAdapter(sorted,
+        appsAdapter = InstalledAppAdapter(
+            sorted,
             onOpenClick = { app -> sendTask("launch", app.packageName) },
             onUninstallClick = { app ->
                 confirmAction("¿Desinstalar ${app.appName} de $deviceName?") {
@@ -441,10 +501,26 @@ class DeviceDetailActivity : AppCompatActivity() {
                 sendTask("pin_app", app.packageName)
                 toast("Intentando fijar ${app.appName} en el launcher del equipo")
             },
-            onParentalClick = { app -> showParentalDialog(app) }
+            onParentalClick = { app -> showParentalDialog(app) },
+            onSelectionChanged = { packages ->
+                selectedPackages = packages
+                updateDebloatButton()
+            }
         )
         rvInstalledApps.adapter = appsAdapter
-        appsAdapter?.updateApps(sorted)
+        filterApps()
+    }
+
+    private fun filterApps() {
+        val query = findViewById<EditText>(R.id.etAppSearch).text.toString()
+        val filter = findViewById<Spinner>(R.id.spAppFilter).selectedItem?.toString() ?: "ALL"
+        appsAdapter?.filter(query, filter)
+    }
+
+    private fun updateDebloatButton() {
+        val button = findViewById<Button>(R.id.btnDebloatSelected)
+        button.text = "DEBLOAT · ${selectedPackages.size} seleccionadas"
+        button.isEnabled = selectedPackages.isNotEmpty()
     }
 
     private fun showParentalDialog(app: InstalledApp) {

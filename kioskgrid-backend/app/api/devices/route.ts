@@ -17,5 +17,5 @@ export async function GET(request:NextRequest){
  return NextResponse.json(requestedStatus ? devices.filter((d:any)=>d.status===requestedStatus) : devices);
 }
 export async function POST(){
- return NextResponse.json({error:'Usa /api/agent/register. El registro de agentes requiere credencial individual.'},{status:410});
+ return NextResponse.json({error:'El registro inicial requiere Supabase Auth en /api/agent/register-auth; el agente usa /api/agent/heartbeat.'},{status:410});
 }
